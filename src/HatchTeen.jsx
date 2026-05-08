@@ -13615,7 +13615,11 @@ function HatchWorldOverlay({ user, onClose }) {
             const rooftop = PARK_MAP_LOCATIONS.find(l => l.id === "rooftop");
             const containerWidth = mapScrollRef.current.clientWidth;
             const target = (rooftop.mapX * w / 1800) - containerWidth / 2;
-            mapScrollRef.current.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+            const left = Math.max(0, target);
+            // Use direct assignment for in-app browser compatibility (Messenger,
+            // FB, IG webviews don't reliably support scrollTo with behavior:smooth)
+            try { mapScrollRef.current.scrollTo({ left, behavior: "auto" }); } catch (e) {}
+            mapScrollRef.current.scrollLeft = left;
           });
         });
       }
@@ -13868,10 +13872,16 @@ function HatchWorldOverlay({ user, onClose }) {
 
         {/* Map (scrollable landscape) */}
         <div ref={mapScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden no-scrollbar relative"
-          style={{ overscrollBehavior: "contain", touchAction: "pan-x" }}>
+          style={{
+            overscrollBehavior: "contain",
+            touchAction: "pan-x",
+            minWidth: 0,
+            minHeight: 0,
+            WebkitOverflowScrolling: "touch",
+          }}>
           <svg viewBox="0 0 1800 900" preserveAspectRatio="xMidYMid meet"
             width={svgDims.w} height={svgDims.h}
-            style={{ display: "block" }}
+            style={{ display: "block", flexShrink: 0, touchAction: "pan-x" }}
             onClick={() => setTappedLocation(null)}>
             <defs>
               <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -14660,6 +14670,21 @@ function Style() {
       body { margin: 0; background: ${T.bg}; }
       html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
       * { box-sizing: border-box; }
+      /* Desktop: constrain app to phone aspect so scenes designed for portrait
+         don't get stretched out across wide screens. On phones (<= 500px) this
+         rule does not apply and the app fills the viewport as normal. */
+      @media (min-width: 500px) {
+        body { background: #02060c; }
+        #root, body > div:first-child {
+          width: 100%;
+          max-width: 430px;
+          min-height: 100vh;
+          margin: 0 auto;
+          position: relative;
+          background: ${T.bg};
+          box-shadow: 0 20px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+        }
+      }
       input, textarea { -webkit-appearance: none; }
       input:focus, textarea:focus { border-color: ${T.teal}66 !important; }
       button:active { transform: scale(0.98); }
