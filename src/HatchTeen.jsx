@@ -8257,14 +8257,11 @@ function HatchingOverlay({ petType, petColor, petName, onDone, isFriend = false,
 // ────────────────────────────────────────────────────────────────────────────
 function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
   const [step, setStep] = useState(0);
-  const [title, setTitle] = useState('');
   const [category, setCategory] = useState(null);
-  const [whyAnchor, setWhyAnchor] = useState(null);
-  const [why, setWhy] = useState('');
+  const [title, setTitle] = useState('');
   const [obstacles, setObstacles] = useState([]);
   const [customObstacle, setCustomObstacle] = useState('');
-  const [firstStep, setFirstStep] = useState('');
-  const [firstStepIsDaily, setFirstStepIsDaily] = useState(false);
+  const [goalSteps, setGoalSteps] = useState([{ id: 's_' + Date.now(), text: '', daily: false }]);
   const [friendType, setFriendType] = useState(null);
   const [friendColor, setFriendColor] = useState(null);
   const [friendIsMystery, setFriendIsMystery] = useState(false);
@@ -8275,6 +8272,18 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
 
   function toggleObstacle(id) {
     setObstacles(o => o.includes(id) ? o.filter(x => x !== id) : [...o, id]);
+  }
+
+  function addGoalStep() {
+    setGoalSteps(prev => [...prev, { id: 's_' + Date.now() + '_' + prev.length, text: '', daily: false }]);
+  }
+
+  function removeGoalStep(id) {
+    setGoalSteps(prev => prev.filter(s => s.id !== id));
+  }
+
+  function updateGoalStep(id, field, value) {
+    setGoalSteps(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
   }
 
   function selectFriendAnimal(id) {
@@ -8306,14 +8315,15 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       ...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean),
       ...(customObstacle.trim() ? [customObstacle.trim()] : []),
     ];
+    const filledSteps = goalSteps
+      .filter(s => s.text.trim().length > 0)
+      .map(s => ({ id: s.id, text: s.text.trim(), done: false, daily: s.daily || undefined }));
     const newGoal = {
       id: 'g_' + Date.now(),
       title: title.trim(),
       category,
-      whyAnchor,
-      why: why.trim(),
       obstacles: allObstacles,
-      steps: [{ id: 's_' + Date.now(), text: firstStep.trim(), done: false, daily: firstStepIsDaily || undefined }],
+      steps: filledSteps.length > 0 ? filledSteps : [{ id: 's_' + Date.now(), text: 'First step', done: false }],
       completed: false,
       createdAt: Date.now(),
       friendPetType: finalFriendType,
@@ -8327,7 +8337,6 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
     await storageSet('user:' + user.username, updated);
 
     if (isFirstGoal) {
-      // Show hatching animation — teen watches their pet hatch
       setSavedGoalId(newGoal.id);
       setShowHatching(true);
     } else {
@@ -8336,14 +8345,12 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
   }
 
   async function handleHatchingDone() {
-    // Mark pet as hatched, award the hatch bonus tickets
     const hatchedUpdate = { ...user, hatched: true, tickets: (user.tickets || 0) + 2 };
     setUser(hatchedUpdate);
     await storageSet('user:' + user.username, hatchedUpdate);
     onClose(savedGoalId);
   }
 
-  // Show hatching overlay for first goal
   if (showHatching) {
     return (
       <HatchingOverlay
@@ -8357,18 +8364,31 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
     );
   }
 
+  // ── Step builder helpers ──────────────────────────────────────────────────
+  const filledStepCount = goalSteps.filter(s => s.text.trim().length > 0).length;
+
+  const stepTypeBtn = (stepId, isDaily, label, emoji, color) => (
+    <button
+      onClick={() => updateGoalStep(stepId, 'daily', isDaily)}
+      style={{
+        flex: 1, padding: '8px 6px', borderRadius: 10,
+        border: `1.5px solid ${goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? color : T.border}`,
+        background: goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? `${color}1a` : T.surface,
+        color: goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? color : T.muted,
+        fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        transition: 'all 0.15s',
+      }}
+    >
+      <span>{emoji}</span>{label}
+    </button>
+  );
+
   const steps = [
-    {
-      title: 'What do you want to do?',
-      sub: 'Make it concrete — something someone could see you doing.',
-      example: 'e.g. "Walk into the cafe and order a coffee"',
-      content: <textarea value={title} onChange={e => setTitle(e.target.value)} placeholder="My goal is..." rows={3} style={{ ...inputStyle, resize: 'none' }} />,
-      canNext: title.trim().length > 2,
-    },
+    // ── Step 0: Category ──────────────────────────────────────────────────
     {
       title: 'What kind of goal is this?',
-      sub: 'Helps Hatch suggest the right scenarios and skills later. Optional — pick one or skip.',
-      example: '',
+      sub: 'Pick the one that fits best.',
       content: (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {GOAL_CATEGORIES.map(c => {
@@ -8384,17 +8404,11 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 22 }}>{c.emoji}</span>
-                  <span style={{
-                    fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans',
-                    color: active ? T.teal : T.text,
-                  }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans', color: active ? T.teal : T.text }}>
                     {c.label}
                   </span>
                 </div>
-                <span style={{
-                  fontSize: 11, fontFamily: 'DM Sans', color: T.muted,
-                  lineHeight: 1.3,
-                }}>
+                <span style={{ fontSize: 11, fontFamily: 'DM Sans', color: T.muted, lineHeight: 1.3 }}>
                   {c.sub}
                 </span>
               </button>
@@ -8402,52 +8416,44 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
           })}
         </div>
       ),
-      canNext: true,
+      canNext: !!category,
+      canSkip: true,
     },
+    // ── Step 1: Goal name ─────────────────────────────────────────────────
     {
-      title: 'Why does it matter?',
-      sub: 'Tap whatever fits. You can add more in your own words if you want — or just pick one and move on.',
-      example: '',
+      title: 'Name your goal',
+      sub: 'Keep it short and clear — something you can picture doing.',
+      example: 'e.g. "Empty the dishwasher" or "Go to the shops alone"',
       content: (
         <div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            {WHY_ANCHORS.map(a => {
-              const active = whyAnchor === a.id;
-              return (
-                <button key={a.id} onClick={() => setWhyAnchor(a.id)} style={{
-                  background: active ? `${T.teal}1f` : T.surface,
-                  border: active ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`,
-                  borderRadius: 12, padding: '14px 14px',
-                  color: active ? T.teal : T.textDim,
-                  fontSize: 14, fontWeight: 500, fontFamily: 'DM Sans',
-                  textAlign: 'left', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
-                }}>
-                  <span style={{ fontSize: 20 }}>{a.emoji}</span>
-                  <span>{a.label}</span>
-                </button>
-              );
-            })}
+          <textarea
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="My goal is..."
+            rows={3}
+            style={{ ...inputStyle, resize: 'none', marginBottom: 16 }}
+          />
+          <div style={{
+            background: T.surface, borderRadius: 12,
+            padding: '12px 14px', border: `1px solid ${T.border}`,
+          }}>
+            <div style={{ ...lblStyle, marginBottom: 6 }}>💡 Good goal names are...</div>
+            <div style={{ fontSize: 12, fontFamily: 'DM Sans', color: T.muted, lineHeight: 1.8 }}>
+              ✅ Clear — you know when you've done it<br />
+              ✅ Yours — something that matters to you<br />
+              ✅ Doable — challenging but possible
+            </div>
           </div>
-          {whyAnchor && (
-            <textarea
-              value={why}
-              onChange={e => setWhy(e.target.value)}
-              placeholder={whyAnchor === 'free_text' ? 'Tell me more...' : 'Want to add more? (optional)'}
-              rows={3}
-              style={{ ...inputStyle, resize: 'none', marginBottom: 0 }}
-            />
-          )}
         </div>
       ),
-      canNext: whyAnchor !== null && (whyAnchor !== 'free_text' || why.trim().length > 2),
+      canNext: title.trim().length > 2,
     },
+    // ── Step 2: What could make this harder ───────────────────────────────
     {
-      title: 'What might get in the way?',
+      title: 'What could make this harder?',
       sub: user?.sensoryProfile
-        ? "Based on what you told Hatch about yourself — tap any that apply for this goal."
-        : 'Knowing this ahead of time means you can plan around it.',
-      example: '',
+        ? 'Based on what you told Hatch about yourself — tap anything that fits.'
+        : 'Knowing ahead of time means you can plan around it.',
       content: (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
@@ -8469,51 +8475,91 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               );
             })}
           </div>
-          <input value={customObstacle} onChange={e => setCustomObstacle(e.target.value)} placeholder="Something else? Add it here..." style={inputStyle} />
+          <input
+            value={customObstacle}
+            onChange={e => setCustomObstacle(e.target.value)}
+            placeholder="Something else? Add it here..."
+            style={inputStyle}
+          />
         </div>
       ),
-      canNext: obstacles.length > 0 || customObstacle.trim().length > 0,
+      canNext: true,
+      canSkip: true,
     },
+    // ── Step 3: Baby steps ────────────────────────────────────────────────
     {
-      title: 'Your first tiny step',
-      sub: 'Small enough you could do it today. Big steps come later.',
-      example: 'e.g. "Walk past the cafe once" or "Look up the menu online"',
+      title: 'Baby steps',
+      sub: `Break "${title || 'your goal'}" into small steps. Say if each one is daily or once-off.`,
       content: (
         <div>
-          <textarea value={firstStep} onChange={e => setFirstStep(e.target.value)} placeholder="My first tiny step is..." rows={3} style={{ ...inputStyle, resize: 'none', marginBottom: 14 }} />
-          {/* Daily or once-off */}
-          <div style={{ fontSize: 12, fontFamily: 'DM Sans', fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            Is this step something you'll do regularly?
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'DM Sans', color: T.teal }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: T.teal }} />
+              Daily habit
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'DM Sans', color: T.purple }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: T.purple }} />
+              Once-off
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button onClick={() => setFirstStepIsDaily(false)} style={{
-              background: !firstStepIsDaily ? `${T.purple}22` : T.surface,
-              border: `2px solid ${!firstStepIsDaily ? T.purple : T.border}`,
-              borderRadius: 14, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
+
+          {goalSteps.map((s, i) => (
+            <div key={s.id} style={{
+              background: T.surface, borderRadius: 12,
+              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
+              padding: '12px 12px', marginBottom: 10,
+              border: `1px solid ${T.border}`,
+              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
             }}>
-              <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, color: !firstStepIsDaily ? T.purple : T.textDim, marginBottom: 2 }}>
-                ⭐ Just this once
+              {/* Text row */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%', background: T.card,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, color: T.muted, fontFamily: 'DM Sans', fontWeight: 600,
+                  flexShrink: 0, marginTop: 2,
+                }}>
+                  {i + 1}
+                </div>
+                <input
+                  value={s.text}
+                  onChange={e => updateGoalStep(s.id, 'text', e.target.value)}
+                  placeholder="What's this step?"
+                  style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: 13, marginBottom: 0 }}
+                />
+                {goalSteps.length > 1 && (
+                  <button onClick={() => removeGoalStep(s.id)} style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: T.subtle, fontSize: 14, padding: '4px', flexShrink: 0,
+                  }}>
+                    <X size={14} color={T.subtle} />
+                  </button>
+                )}
               </div>
-              <div style={{ fontFamily: 'DM Sans', fontSize: 11, color: T.textDim }}>
-                A one-time thing — completing it permanently checks this step off.
+              {/* Type toggle */}
+              <div style={{ display: 'flex', gap: 7 }}>
+                {stepTypeBtn(s.id, true,  'Daily habit', '🔄', T.teal)}
+                {stepTypeBtn(s.id, false, 'Once-off',    '✅', T.purple)}
               </div>
-            </button>
-            <button onClick={() => setFirstStepIsDaily(true)} style={{
-              background: firstStepIsDaily ? `${T.teal}1a` : T.surface,
-              border: `2px solid ${firstStepIsDaily ? T.teal : T.border}`,
-              borderRadius: 14, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
-            }}>
-              <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, color: firstStepIsDaily ? T.teal : T.textDim, marginBottom: 2 }}>
-                🔁 Every day
-              </div>
-              <div style={{ fontFamily: 'DM Sans', fontSize: 11, color: T.textDim }}>
-                A daily habit — you'll check it off each day and build a streak.
-              </div>
-            </button>
-          </div>
+            </div>
+          ))}
+
+          <button onClick={addGoalStep} style={{
+            width: '100%', padding: '12px',
+            background: 'transparent',
+            border: `1.5px dashed ${T.borderStrong}`,
+            borderRadius: 12, color: T.muted,
+            fontSize: 13, fontFamily: 'DM Sans', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            transition: 'all 0.15s',
+          }}>
+            <Plus size={16} color={T.muted} /> Add a step
+          </button>
         </div>
       ),
-      canNext: firstStep.trim().length > 2,
+      canNext: filledStepCount > 0,
+      canSkip: false,
     },
     {
       title: 'Pick a friend pet',
@@ -8579,9 +8625,8 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       canNext: (friendIsMystery) || (friendType && friendColor),
     },
     {
-      title: isFirstGoal ? `Almost there, ${user.petName}!` : 'All set',
+      title: isFirstGoal ? `Almost there, ${user.petName}!` : 'Your goal is ready!',
       sub: isFirstGoal ? `Finish your first step and ${user.petName} will hatch.` : '',
-      example: '',
       content: (
         <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: 20 }}>
           <div style={{ marginBottom: 16, textAlign: 'center' }}>
@@ -8591,10 +8636,12 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               mystery={!isFirstGoal && friendIsMystery}
             />
           </div>
+          {/* Goal name */}
           <div style={{ marginBottom: 14 }}>
             <div style={lblStyle}>Goal</div>
             <div style={valStyle}>{title}</div>
           </div>
+          {/* Category */}
           {category && (
             <div style={{ marginBottom: 14 }}>
               <div style={lblStyle}>Type</div>
@@ -8604,28 +8651,46 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               </div>
             </div>
           )}
-          <div style={{ marginBottom: 14 }}>
-            <div style={lblStyle}>Why</div>
-            {whyAnchor && whyAnchor !== 'free_text' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: why.trim() ? 6 : 0 }}>
-                <span style={{ fontSize: 18 }}>{WHY_ANCHORS.find(a => a.id === whyAnchor)?.emoji}</span>
-                <span style={{ ...valStyle, color: T.teal }}>{WHY_ANCHORS.find(a => a.id === whyAnchor)?.label}</span>
+          {/* Obstacles */}
+          {(obstacles.length > 0 || customObstacle.trim()) && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={lblStyle}>Watch out for</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                {[...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean), ...(customObstacle.trim() ? [customObstacle.trim()] : [])].map((o, i) => (
+                  <span key={i} style={{ background: `${T.amber}22`, color: T.amber, fontSize: 12, padding: '4px 10px', borderRadius: 12, fontFamily: 'DM Sans' }}>{o}</span>
+                ))}
               </div>
-            )}
-            {why.trim() && <div style={valStyle}>{why}</div>}
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={lblStyle}>Watch out for</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-              {[...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean), ...(customObstacle.trim() ? [customObstacle.trim()] : [])].map((o, i) => (
-                <span key={i} style={{ background: `${T.amber}22`, color: T.amber, fontSize: 12, padding: '4px 10px', borderRadius: 12, fontFamily: 'DM Sans' }}>{o}</span>
-              ))}
             </div>
-          </div>
-          <div>
-            <div style={lblStyle}>First tiny step</div>
-            <div style={valStyle}>{firstStep}</div>
-          </div>
+          )}
+          {/* Steps */}
+          {goalSteps.filter(s => s.text.trim()).length > 0 && (
+            <div>
+              <div style={lblStyle}>Baby steps</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                {goalSteps.filter(s => s.text.trim()).map((s, i) => (
+                  <div key={s.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: T.card, borderRadius: 10, padding: '10px 12px',
+                    borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
+                  }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '50%', background: T.surface,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, color: T.muted, fontFamily: 'DM Sans', fontWeight: 600, flexShrink: 0,
+                    }}>{i + 1}</div>
+                    <span style={{ flex: 1, fontSize: 13, fontFamily: 'DM Sans', color: T.textDim }}>{s.text}</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                      background: s.daily ? `${T.teal}1a` : `${T.purple}1a`,
+                      color: s.daily ? T.teal : T.purple, fontFamily: 'DM Sans', whiteSpace: 'nowrap',
+                    }}>
+                      {s.daily ? 'Daily' : 'Once-off'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ),
       canNext: true,
@@ -8661,14 +8726,27 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
         <h2 style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 24, color: T.text, letterSpacing: '-0.3px', marginBottom: 8 }}>{cur.title}</h2>
         {cur.sub && <p style={{ color: T.textDim, fontSize: 14, fontFamily: 'DM Sans', marginBottom: 6, lineHeight: 1.5 }}>{cur.sub}</p>}
-        {cur.example && <p style={{ color: T.muted, fontSize: 13, fontFamily: 'DM Sans', marginBottom: 20, fontStyle: 'italic' }}>{cur.example}</p>}
-        {(!cur.example) && <div style={{ marginBottom: 20 }} />}
+        {cur.example && <p style={{ color: T.muted, fontSize: 13, fontFamily: 'DM Sans', marginBottom: 16, fontStyle: 'italic' }}>{cur.example}</p>}
+        {!cur.sub && !cur.example && <div style={{ marginBottom: 20 }} />}
+        {cur.sub && !cur.example && <div style={{ marginBottom: 16 }} />}
         {cur.content}
       </div>
-      <div style={{ padding: 20, borderTop: `1px solid ${T.border}` }}>
-        <button onClick={isLast ? finish : () => cur.canNext && setStep(step + 1)} disabled={!cur.canNext}
-          style={{ ...primaryBtn, opacity: cur.canNext ? 1 : 0.4, cursor: cur.canNext ? 'pointer' : 'not-allowed' }}>
-          {isLast ? 'Lock it in' : 'Next'}
+      <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 10 }}>
+        {cur.canSkip && (
+          <button onClick={() => setStep(step + 1)} style={{
+            padding: '14px 20px', background: T.surface,
+            border: `1px solid ${T.border}`, borderRadius: 14,
+            color: T.muted, fontSize: 14, fontFamily: 'DM Sans', cursor: 'pointer',
+          }}>
+            Skip
+          </button>
+        )}
+        <button
+          onClick={isLast ? finish : () => cur.canNext && setStep(step + 1)}
+          disabled={!cur.canNext}
+          style={{ ...primaryBtn, flex: 1, opacity: cur.canNext ? 1 : 0.4, cursor: cur.canNext ? 'pointer' : 'not-allowed' }}
+        >
+          {isLast ? 'Lock it in 🎉' : 'Next →'}
         </button>
       </div>
     </div>
@@ -13087,6 +13165,1356 @@ function ShoppingGameActivity({ onFinish }) {
 }
 
 
+// ════════════════════════════════════════════════════════════════════════════
+// SOCIAL — multi-place social world ("The Park") + future social scenarios
+// Origin: HatchPark.jsx, integrated as a Hatch tab. Each "social situation"
+// lives as a module here (parallel to LEARN_MODULES). Add more by creating
+// a new module entry + a corresponding overlay component.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─── Park constants ─────────────────────────────────────────────────────────
+const PARK_COLORS = [
+  { name: "Coral", value: "#E8736B" }, { name: "Sage", value: "#7FA88E" },
+  { name: "Honey", value: "#E0A95C" }, { name: "Lilac", value: "#9B8AC4" },
+  { name: "Slate", value: "#6B85A0" }, { name: "Dusk", value: "#B47A8E" },
+  { name: "Cocoa", value: "#8E6B52" }, { name: "Cream", value: "#E8D5B0" },
+];
+
+const PARK_HATS = [
+  { id: "none", label: "None" }, { id: "beanie", label: "Beanie" },
+  { id: "bucket", label: "Bucket" }, { id: "cap", label: "Cap" },
+  { id: "headphones", label: "Cans" }, { id: "hood", label: "Hood" },
+];
+
+const PARK_ACCESSORIES = [
+  { id: "none", label: "None" }, { id: "shades", label: "Shades" },
+  { id: "scarf", label: "Scarf" }, { id: "chain", label: "Chain" },
+  { id: "bandana", label: "Bandana" },
+];
+
+const PARK_EMOTES = [
+  { id: "wave", emoji: "👋", label: "Hey" }, { id: "heart", emoji: "♥", label: "Love" },
+  { id: "fire", emoji: "🔥", label: "Fire" }, { id: "music", emoji: "♪", label: "Vibe" },
+  { id: "snack", emoji: "✦", label: "Yes" },
+];
+
+const PARK_DROP_TYPES = [
+  { id: "flower", label: "Flower" }, { id: "star", label: "Star" },
+  { id: "heart", label: "Heart" }, { id: "music", label: "Music" },
+  { id: "snack", label: "Snack" }, { id: "sparkle", label: "Sparkle" },
+];
+
+const PARK_CAPTIONS = [null, "for you", "thinking of u", "you got this", "stay cool", "vibes", "thx for being here"];
+const PARK_DROP_TTL_MS = 1000 * 60 * 60 * 24;
+
+const PARK_MAP_LOCATIONS = [
+  { id: "beach", name: "The Beach", vibe: "Sand · palms · ocean", time: "Midday", status: "soon",
+    mapX: 200, mapY: 580, regulars: ["Marlow", "Tide"] },
+  { id: "greenhouse", name: "The Greenhouse", vibe: "Plants · koi pond", time: "Afternoon", status: "soon",
+    mapX: 540, mapY: 480, regulars: ["Fern", "Koi"] },
+  { id: "rooftop", name: "The Rooftop", vibe: "Sunset · fairy lights", time: "Golden hour", status: "open",
+    mapX: 880, mapY: 380, regulars: ["Mochi", "Pip", "Sage"] },
+  { id: "den", name: "The Den", vibe: "Rainy · cozy", time: "Late night", status: "soon",
+    mapX: 1220, mapY: 500, regulars: ["Bean", "Toast"] },
+  { id: "diner", name: "The Diner", vibe: "Neon · milkshakes", time: "Late night", status: "soon",
+    mapX: 1560, mapY: 540, regulars: ["Cherry", "Dot"] },
+];
+
+const PARK_REGULARS = [
+  { id: "regular_mochi", name: "Mochi", color: "#9B8AC4", hat: "headphones", accessory: "scarf",
+    isBot: true, bio: "always near the boombox",
+    home: { x: 600, y: 470 }, wander: 80, moveInterval: [7000, 14000], emoteChance: 0.35, favEmotes: ["music", "heart"] },
+  { id: "regular_pip", name: "Pip", color: "#E8736B", hat: "cap", accessory: "shades",
+    isBot: true, bio: "hyped about everything",
+    home: { x: 500, y: 480 }, wander: 200, moveInterval: [3500, 7000], emoteChance: 0.55, favEmotes: ["fire", "snack", "music"] },
+  { id: "regular_sage", name: "Sage", color: "#7FA88E", hat: "bucket", accessory: "chain",
+    isBot: true, bio: "the quiet one on the bench",
+    home: { x: 360, y: 470 }, wander: 50, moveInterval: [12000, 22000], emoteChance: 0.25, favEmotes: ["wave", "heart"] },
+];
+
+const PARK_SEED_DROPS = () => [
+  { id: "seed_mochi_1", type: "music", x: 0.62, y: 0.78, caption: "vibes", fromName: "Mochi", fromColor: "#9B8AC4", timestamp: Date.now() - 1000 * 60 * 35 },
+  { id: "seed_pip_1", type: "star", x: 0.24, y: 0.84, caption: "you got this", fromName: "Pip", fromColor: "#E8736B", timestamp: Date.now() - 1000 * 60 * 60 * 3 },
+  { id: "seed_sage_1", type: "flower", x: 0.72, y: 0.82, caption: "thinking of u", fromName: "Sage", fromColor: "#7FA88E", timestamp: Date.now() - 1000 * 60 * 60 * 7 },
+];
+
+function parkGeneratePetId() { return `pet_${Math.random().toString(36).substring(2, 11)}`; }
+function parkGenerateDropId() { return `drop_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; }
+function parkTimeAgo(ts) {
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// ─── Pick a Park colour close to the HatchTeen pet's colour ─────────────────
+// HatchTeen colours are vivid (mint, teal etc) while Park colours are warm/muted.
+// We pass through whatever HatchTeen colour the user has — the Park's palette
+// is just for fallback on the entry stage.
+function deriveParkPetFromUser(user) {
+  return {
+    id: parkGeneratePetId(),
+    name: (user.petName || "Pet").slice(0, 12),
+    color: user.petColor || PARK_COLORS[0].value,
+    hat: "none",
+    accessory: "none",
+    x: 0, y: 0,
+    emote: null, emoteUntil: 0, lastSeen: Date.now(),
+  };
+}
+
+// ─── Park-specific HAT / ACCESSORY layers (different style from HatchTeen) ──
+function ParkHatLayer({ type }) {
+  if (type === "beanie") return (<g><path d="M 18 16 Q 38 -4 58 16 L 58 24 Q 38 19 18 24 Z" fill="#3D4A5C" /><rect x="18" y="22" width="40" height="6" rx="2" fill="#2D3845" /></g>);
+  if (type === "bucket") return (<g><ellipse cx="38" cy="20" rx="26" ry="5" fill="#7B8A5C" /><path d="M 22 22 Q 22 6 38 6 Q 54 6 54 22 Z" fill="#8FA068" /></g>);
+  if (type === "cap") return (<g><path d="M 18 18 Q 38 6 58 18 L 58 22 Q 38 19 18 22 Z" fill="#2D3845" /><ellipse cx="50" cy="22" rx="20" ry="3.5" fill="#1F2833" /><circle cx="38" cy="14" r="3" fill="#E0A95C" opacity="0.9" /></g>);
+  if (type === "headphones") return (<g><path d="M 16 22 Q 16 4 38 4 Q 60 4 60 22" stroke="#2D2D33" strokeWidth="3.5" fill="none" strokeLinecap="round" /><ellipse cx="16" cy="24" rx="6" ry="8" fill="#3D4452" /><ellipse cx="60" cy="24" rx="6" ry="8" fill="#3D4452" /></g>);
+  if (type === "hood") return (<g><path d="M 12 28 Q 14 4 38 4 Q 62 4 64 28 Q 64 38 60 38 L 16 38 Q 12 38 12 28 Z" fill="#5C6B7A" /><path d="M 16 26 Q 18 10 38 10 Q 58 10 60 26 Q 60 32 56 32 L 20 32 Q 16 32 16 26 Z" fill="#7080A0" opacity="0.6" /></g>);
+  return null;
+}
+
+function ParkAccessoryLayer({ type }) {
+  if (type === "shades") return (<g><rect x="22" y="26" width="14" height="8" rx="3" fill="#1A1A22" /><rect x="40" y="26" width="14" height="8" rx="3" fill="#1A1A22" /><rect x="24" y="27.5" width="4" height="2" rx="1" fill="rgba(255,255,255,0.4)" /></g>);
+  if (type === "scarf") return (<g><path d="M 22 50 Q 38 56 54 50 L 54 56 Q 38 62 22 56 Z" fill="#9B6B7E" /><path d="M 48 54 L 52 68 L 56 66 L 52 52 Z" fill="#9B6B7E" /></g>);
+  if (type === "chain") return (<g><path d="M 30 50 Q 38 56 46 50" stroke="#E0A95C" strokeWidth="1.5" fill="none" /><circle cx="38" cy="56" r="2.5" fill="#E0A95C" /></g>);
+  if (type === "bandana") return (<g><path d="M 16 22 Q 38 18 60 22 L 58 26 Q 38 23 18 26 Z" fill="#C44A4A" /></g>);
+  return null;
+}
+
+function ParkPetSVG({ pet, size = 80 }) {
+  const id = `pg-${pet.color?.replace("#", "")}-${pet.id || Math.random().toString(36).slice(2, 6)}`;
+  return (
+    <svg width={size} height={size * 1.13} viewBox="0 0 76 86">
+      <defs><radialGradient id={id} cx="0.35" cy="0.35" r="0.8"><stop offset="0%" stopColor="rgba(255,255,255,0.25)" /><stop offset="100%" stopColor="rgba(0,0,0,0)" /></radialGradient></defs>
+      <ellipse cx="38" cy="82" rx="20" ry="3" fill="rgba(0,0,0,0.25)" />
+      <ellipse cx="29" cy="74" rx="6" ry="4" fill={pet.color} opacity="0.9" />
+      <ellipse cx="47" cy="74" rx="6" ry="4" fill={pet.color} opacity="0.9" />
+      <ellipse cx="38" cy="56" rx="23" ry="21" fill={pet.color} />
+      <ellipse cx="38" cy="56" rx="23" ry="21" fill={`url(#${id})`} />
+      <circle cx="38" cy="32" r="21" fill={pet.color} />
+      <circle cx="38" cy="32" r="21" fill={`url(#${id})`} />
+      <ellipse cx="22" cy="20" rx="5" ry="8" fill={pet.color} transform="rotate(-22 22 20)" />
+      <ellipse cx="54" cy="20" rx="5" ry="8" fill={pet.color} transform="rotate(22 54 20)" />
+      <ellipse cx="30" cy="30" rx="2" ry="2.5" fill="#1A1A22" />
+      <ellipse cx="46" cy="30" rx="2" ry="2.5" fill="#1A1A22" />
+      <path d="M 35 38 Q 38 39.5 41 38" stroke="#1A1A22" strokeWidth="1.2" fill="none" strokeLinecap="round" opacity="0.7" />
+      <ParkAccessoryLayer type={pet.accessory} />
+      <ParkHatLayer type={pet.hat} />
+    </svg>
+  );
+}
+
+// ─── Park map landmarks ─────────────────────────────────────────────────────
+function BeachLandmark({ x, y, isOpen, onTap }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
+      <path d="M -90 0 Q 0 -10 90 0 Q 80 25 -80 25 Z" fill="#F4D8A8" />
+      <path d="M -90 0 Q 0 -10 90 0 Q 80 8 -80 8 Z" fill="#FFE0B0" />
+      <path d="M -140 -5 Q -100 -10 -90 0 L -90 5 Q -120 5 -140 0 Z" fill="#5FA8CF" opacity="0.7" />
+      <line x1="-130" y1="-2" x2="-100" y2="-2" stroke="white" strokeWidth="0.5" opacity="0.6" />
+      <path d="M 5 0 Q 0 -50 10 -100" stroke="#5C3D2E" strokeWidth="5" fill="none" strokeLinecap="round" />
+      <path d="M 10 -100 Q -25 -110 -45 -95" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <path d="M 10 -100 Q 45 -110 65 -95" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <path d="M 10 -100 Q 5 -130 -10 -140" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <path d="M 10 -100 Q 15 -130 30 -140" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <circle cx="8" cy="-98" r="3.5" fill="#5C3D2E" />
+      <circle cx="14" cy="-95" r="3" fill="#5C3D2E" />
+      <path d="M 60 -10 L 60 10" stroke="#5C3D2E" strokeWidth="1.5" />
+      <path d="M 45 -10 Q 60 -25 75 -10 Z" fill="#E8736B" />
+      <path d="M 45 -10 Q 60 -18 75 -10" fill="#F4B5A0" />
+      <line x1="60" y1="-25" x2="60" y2="-10" stroke="#5C3D2E" strokeWidth="0.6" />
+      {isOpen && <circle cx="0" cy="-50" r="50" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
+    </g>
+  );
+}
+
+function GreenhouseLandmark({ x, y, isOpen, onTap }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
+      <ellipse cx="0" cy="40" rx="160" ry="50" fill="#4D6B4F" />
+      <ellipse cx="0" cy="35" rx="140" ry="40" fill="#5C7B5E" />
+      <path d="M -70 -10 Q -70 -90 0 -110 Q 70 -90 70 -10 Z" fill="rgba(170, 220, 200, 0.4)" stroke="#5C7B5E" strokeWidth="2" />
+      <path d="M -70 -10 Q -70 -90 0 -110 Q 70 -90 70 -10 Z" fill="url(#glassShine)" opacity="0.5" />
+      <line x1="-50" y1="-50" x2="-50" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
+      <line x1="-25" y1="-90" x2="-25" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
+      <line x1="0" y1="-110" x2="0" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
+      <line x1="25" y1="-90" x2="25" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
+      <line x1="50" y1="-50" x2="50" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
+      <line x1="-70" y1="-10" x2="70" y2="-10" stroke="#5C7B5E" strokeWidth="1.5" />
+      <rect x="-72" y="-12" width="144" height="14" fill="#7B5337" />
+      <rect x="-78" y="-2" width="156" height="6" fill="#5C3D2E" />
+      <ellipse cx="-30" cy="-30" rx="12" ry="20" fill="#3D5C42" opacity="0.9" />
+      <ellipse cx="20" cy="-40" rx="14" ry="25" fill="#3D5C42" opacity="0.85" />
+      <ellipse cx="-5" cy="-50" rx="10" ry="30" fill="#5C7B5E" opacity="0.7" />
+      <ellipse cx="0" cy="-40" rx="55" ry="35" fill="#FFE9B0" opacity="0.25" />
+      <circle cx="0" cy="-110" r="3" fill="#E0A95C" />
+      <line x1="0" y1="-113" x2="0" y2="-120" stroke="#5C7B5E" strokeWidth="1" />
+      {isOpen && <circle cx="0" cy="-60" r="80" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
+    </g>
+  );
+}
+
+function RooftopLandmark({ x, y, isOpen, onTap }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
+      <rect x="-65" y="0" width="130" height="280" fill="#3D2A4E" stroke="#1A0F33" strokeWidth="1.5" />
+      <rect x="-65" y="0" width="130" height="280" fill="url(#buildingFade)" opacity="0.5" />
+      {Array.from({ length: 7 }).map((_, row) =>
+        Array.from({ length: 3 }).map((_, col) => {
+          const wx = -50 + col * 35;
+          const wy = 30 + row * 35;
+          const lit = (row + col) % 2 === 0;
+          return <rect key={`${row}-${col}`} x={wx} y={wy} width="18" height="20" rx="1"
+            fill={lit ? "#FFE066" : "#1A0F33"} opacity={lit ? 0.85 : 0.6} />;
+        })
+      )}
+      <rect x="-72" y="-12" width="144" height="14" fill="#7B5337" />
+      <rect x="-72" y="-2" width="144" height="3" fill="#5C3D2E" />
+      <rect x="-72" y="-22" width="144" height="2" fill="#3D2D22" />
+      {Array.from({ length: 14 }).map((_, i) => (
+        <rect key={i} x={-70 + i * 10} y="-22" width="1.5" height="10" fill="#3D2D22" />
+      ))}
+      <path d="M -70 -25 Q 0 -45 70 -25" stroke="#3D2D2D" strokeWidth="0.8" fill="none" />
+      {[0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((t, i) => {
+        const fx = -70 + t * 140;
+        const fy = -25 + Math.sin(t * Math.PI) * 18;
+        return <g key={i}><circle cx={fx} cy={fy} r="3.5" fill="#FFE066" opacity="0.5" /><circle cx={fx} cy={fy} r="1.6" fill="#FFEFA8" /></g>;
+      })}
+      <ellipse cx="-50" cy="-15" rx="8" ry="10" fill="#5C7B5E" />
+      <ellipse cx="50" cy="-15" rx="8" ry="10" fill="#5C7B5E" />
+      <ellipse cx="0" cy="-30" rx="100" ry="40" fill="rgba(255, 152, 104, 0.2)" />
+      {isOpen && <circle cx="0" cy="-30" r="100" fill="rgba(255, 224, 102, 0.18)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
+    </g>
+  );
+}
+
+function DenLandmark({ x, y, isOpen, onTap }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
+      <rect x="-60" y="0" width="120" height="100" fill="#3D2A38" stroke="#1A0F1A" strokeWidth="1.5" />
+      <path d="M -70 0 L 0 -55 L 70 0 Z" fill="#5C2A38" stroke="#1A0F1A" strokeWidth="1.5" />
+      <path d="M -70 0 L 0 -55 L 70 0 Z" fill="url(#roofShade2)" opacity="0.5" />
+      <rect x="30" y="-40" width="10" height="25" fill="#5C2A38" stroke="#1A0F1A" strokeWidth="1" />
+      <ellipse cx="35" cy="-50" rx="5" ry="3" fill="rgba(255,255,255,0.4)" style={{ animation: "smoke 4s ease-in-out infinite" }} />
+      <ellipse cx="38" cy="-58" rx="6" ry="4" fill="rgba(255,255,255,0.3)" style={{ animation: "smoke 5s ease-in-out infinite 0.5s" }} />
+      <rect x="-30" y="20" width="35" height="40" rx="2" fill="#FFD080" />
+      <rect x="-30" y="20" width="35" height="40" rx="2" fill="url(#windowGlow)" opacity="0.6" />
+      <line x1="-12.5" y1="20" x2="-12.5" y2="60" stroke="#5C3D2E" strokeWidth="1.2" />
+      <line x1="-30" y1="40" x2="5" y2="40" stroke="#5C3D2E" strokeWidth="1.2" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <line key={i} x1={-25 + i * 4} y1={22 + (i % 3) * 8} x2={-27 + i * 4} y2={32 + (i % 3) * 8}
+          stroke="rgba(180, 200, 230, 0.5)" strokeWidth="0.5" />
+      ))}
+      <rect x="20" y="35" width="25" height="55" rx="2" fill="#5C3D2E" stroke="#1A0F1A" strokeWidth="1" />
+      <circle cx="40" cy="62" r="1.5" fill="#E0A95C" />
+      <ellipse cx="-12" cy="40" rx="50" ry="30" fill="rgba(255, 208, 128, 0.25)" />
+      <ellipse cx="-20" cy="100" rx="22" ry="3" fill="#4A5A6E" opacity="0.6" />
+      {isOpen && <circle cx="0" cy="0" r="100" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
+    </g>
+  );
+}
+
+function DinerLandmark({ x, y, isOpen, onTap }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
+      <ellipse cx="0" cy="-30" rx="120" ry="60" fill="#E8369B" opacity="0.2" />
+      <ellipse cx="0" cy="-30" rx="80" ry="40" fill="#FF6BB8" opacity="0.2" />
+      <rect x="-70" y="-20" width="140" height="120" fill="#2D1B33" stroke="#1A0F1A" strokeWidth="1.5" />
+      <rect x="-70" y="-20" width="140" height="120" fill="url(#dinerFade)" opacity="0.4" />
+      <rect x="-72" y="-25" width="144" height="6" fill="#1A0F1A" />
+      <rect x="-60" y="0" width="115" height="55" fill="#0F0820" stroke="#5C2A4A" strokeWidth="2" />
+      <rect x="-55" y="35" width="35" height="20" rx="3" fill="#C44A6E" />
+      <rect x="-15" y="35" width="35" height="20" rx="3" fill="#C44A6E" />
+      <rect x="25" y="35" width="30" height="20" rx="3" fill="#C44A6E" />
+      <circle cx="-37" cy="12" r="3" fill="#FFE066" />
+      <circle cx="2" cy="12" r="3" fill="#FFE066" />
+      <circle cx="40" cy="12" r="3" fill="#FFE066" />
+      <line x1="-37" y1="0" x2="-37" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
+      <line x1="2" y1="0" x2="2" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
+      <line x1="40" y1="0" x2="40" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
+      <rect x="-50" y="-55" width="100" height="28" rx="3" fill="none" stroke="#FF6BB8" strokeWidth="2" />
+      <text x="0" y="-37" textAnchor="middle" fontFamily="Caprasimo, cursive" fontSize="18" fill="#FFC4E5" letterSpacing="2"
+        style={{ filter: "drop-shadow(0 0 4px #FF6BB8)" }}>DINER</text>
+      <rect x="56" y="55" width="18" height="45" fill="#5C2A4A" stroke="#1A0F1A" strokeWidth="1" />
+      <ellipse cx="0" cy="105" rx="80" ry="5" fill="rgba(255, 107, 184, 0.25)" />
+      {isOpen && <circle cx="0" cy="0" r="100" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
+    </g>
+  );
+}
+
+const PARK_LANDMARK_COMPONENTS = {
+  beach: BeachLandmark, greenhouse: GreenhouseLandmark, rooftop: RooftopLandmark,
+  den: DenLandmark, diner: DinerLandmark,
+};
+
+// ─── Drop icons + drop component ────────────────────────────────────────────
+function ParkDropIcon({ type, size = 28 }) {
+  const s = size;
+  if (type === "flower") return (<svg width={s} height={s} viewBox="0 0 32 32"><circle cx="16" cy="20" r="5" fill="#E8736B" /><circle cx="9" cy="14" r="4.5" fill="#E89BB0" /><circle cx="23" cy="14" r="4.5" fill="#E89BB0" /><circle cx="12" cy="9" r="4.5" fill="#F4B5C4" /><circle cx="20" cy="9" r="4.5" fill="#F4B5C4" /><circle cx="16" cy="14" r="3" fill="#E0A95C" /></svg>);
+  if (type === "star") return (<svg width={s} height={s} viewBox="0 0 32 32"><path d="M 16 4 L 19.5 12.5 L 28 13.5 L 21.5 19 L 23.5 27.5 L 16 23 L 8.5 27.5 L 10.5 19 L 4 13.5 L 12.5 12.5 Z" fill="#E0A95C" stroke="#C4744A" strokeWidth="1" /></svg>);
+  if (type === "heart") return (<svg width={s} height={s} viewBox="0 0 32 32"><path d="M 16 28 C 8 22 4 17 4 12 C 4 8 7 5 11 5 C 13 5 15 6 16 8 C 17 6 19 5 21 5 C 25 5 28 8 28 12 C 28 17 24 22 16 28 Z" fill="#E8736B" stroke="#C44A4A" strokeWidth="1" /></svg>);
+  if (type === "music") return (<svg width={s} height={s} viewBox="0 0 32 32"><ellipse cx="9" cy="22" rx="5" ry="4" fill="#9B8AC4" stroke="#6B5BA0" strokeWidth="1" /><ellipse cx="22" cy="20" rx="5" ry="4" fill="#9B8AC4" stroke="#6B5BA0" strokeWidth="1" /><rect x="13" y="6" width="2.5" height="17" fill="#6B5BA0" /><rect x="26" y="4" width="2.5" height="17" fill="#6B5BA0" /><path d="M 13 6 Q 22 2 28 4 L 28 7 Q 22 5 13 9 Z" fill="#6B5BA0" /></svg>);
+  if (type === "snack") return (<svg width={s} height={s} viewBox="0 0 32 32"><path d="M 16 8 Q 8 10 8 18 Q 8 26 16 28 Q 24 26 24 18 Q 24 10 16 8 Z" fill="#E8504C" stroke="#C44A4A" strokeWidth="1" /><circle cx="13" cy="15" r="1" fill="#FFE066" /><circle cx="18" cy="14" r="1" fill="#FFE066" /><path d="M 14 7 Q 16 3 20 5 Q 18 8 16 8 Q 15 8 14 7 Z" fill="#5C8454" /></svg>);
+  if (type === "sparkle") return (<svg width={s} height={s} viewBox="0 0 32 32"><path d="M 16 4 L 17 13 L 26 14 L 17 15 L 16 24 L 15 15 L 6 14 L 15 13 Z" fill="#FFE066" /><path d="M 25 22 L 25.5 25.5 L 29 26 L 25.5 26.5 L 25 30 L 24.5 26.5 L 21 26 L 24.5 25.5 Z" fill="#FFEFA8" /></svg>);
+  return null;
+}
+
+function ParkDrop({ drop, onTap }) {
+  const ageMs = Date.now() - drop.timestamp;
+  const isFresh = ageMs < 1000 * 60 * 60;
+  const opacity = ageMs > 1000 * 60 * 60 * 12 ? 0.6 : 1;
+  return (
+    <div className="absolute" style={{
+      left: `${drop.x * 100}%`, top: `${drop.y * 100}%`,
+      transform: "translate(-50%, -50%)", cursor: "pointer", opacity,
+      animation: isFresh ? "dropPulse 2.5s ease-in-out infinite" : "none", zIndex: 5,
+    }} onClick={(e) => { e.stopPropagation(); onTap(drop); }}>
+      <div className="absolute inset-0 -z-10" style={{
+        width: "44px", height: "44px", transform: "translate(-22%, -22%)",
+        background: `radial-gradient(circle, ${drop.fromColor}40 0%, transparent 70%)`, filter: "blur(4px)",
+      }} />
+      <div style={{ animation: "dropFloat 3s ease-in-out infinite" }}>
+        <ParkDropIcon type={drop.type} size={32} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Rooftop scene props ────────────────────────────────────────────────────
+function ParkCitySkyline() {
+  return (
+    <svg className="absolute left-0 right-0" style={{ bottom: "260px", width: "100%", opacity: 0.65 }} height="180" viewBox="0 0 1000 180" preserveAspectRatio="none">
+      <defs><linearGradient id="cityGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1A1133" /><stop offset="100%" stopColor="#2D1B4E" /></linearGradient></defs>
+      <rect x="0" y="60" width="80" height="120" fill="url(#cityGrad)" />
+      <rect x="80" y="40" width="50" height="140" fill="url(#cityGrad)" />
+      <rect x="130" y="80" width="70" height="100" fill="url(#cityGrad)" />
+      <rect x="200" y="20" width="60" height="160" fill="url(#cityGrad)" />
+      <polygon points="260,20 275,5 290,20 290,180 260,180" fill="url(#cityGrad)" />
+      <rect x="290" y="60" width="80" height="120" fill="url(#cityGrad)" />
+      <rect x="370" y="30" width="40" height="150" fill="url(#cityGrad)" />
+      <rect x="410" y="70" width="60" height="110" fill="url(#cityGrad)" />
+      <rect x="470" y="10" width="55" height="170" fill="url(#cityGrad)" />
+      <rect x="525" y="50" width="70" height="130" fill="url(#cityGrad)" />
+      <rect x="595" y="80" width="50" height="100" fill="url(#cityGrad)" />
+      <rect x="645" y="35" width="65" height="145" fill="url(#cityGrad)" />
+      <rect x="730" y="60" width="55" height="120" fill="url(#cityGrad)" />
+      <rect x="785" y="25" width="75" height="155" fill="url(#cityGrad)" />
+      <rect x="860" y="55" width="50" height="125" fill="url(#cityGrad)" />
+      <rect x="910" y="75" width="90" height="105" fill="url(#cityGrad)" />
+      {Array.from({ length: 40 }).map((_, i) => (
+        <rect key={i} x={(i * 977) % 1000} y={40 + ((i * 37) % 130)} width="2" height="3" fill="#FFE066" opacity={0.7 + ((i * 13) % 30) / 100} />
+      ))}
+    </svg>
+  );
+}
+
+function ParkFairyLights({ y, count = 10 }) {
+  const points = Array.from({ length: count + 1 }).map((_, i) => i / count);
+  return (
+    <svg className="absolute left-0 right-0 pointer-events-none" style={{ top: `${y}px`, width: "100%" }} height="80" viewBox="0 0 1000 80" preserveAspectRatio="none">
+      <path d="M 10 5 Q 500 50 990 5" stroke="#3D2D2D" strokeWidth="0.8" fill="none" />
+      {points.map((t, i) => {
+        const x = 10 + t * 980;
+        const yy = 5 + Math.sin(t * Math.PI) * 45;
+        return (<g key={i}><circle cx={x} cy={yy} r="6" fill="#FFE066" opacity="0.4" /><circle cx={x} cy={yy} r="2.5" fill="#FFEFA8" /></g>);
+      })}
+    </svg>
+  );
+}
+
+function ParkPottedPlant({ left, bottom, kind = "monstera" }) {
+  return (
+    <div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px`, animation: "sway 6s ease-in-out infinite" }}>
+      <svg width="80" height="120" viewBox="0 0 80 120">
+        <path d="M 22 80 L 26 118 L 54 118 L 58 80 Z" fill="#8E5C42" />
+        <path d="M 22 80 L 58 80 L 56 86 L 24 86 Z" fill="#6B4530" />
+        {kind === "monstera" ? (<g>
+          <path d="M 40 80 Q 20 60 18 38 Q 20 30 30 32 Q 38 38 40 50 Z" fill="#3D5C42" />
+          <path d="M 40 80 Q 60 60 62 38 Q 60 30 50 32 Q 42 38 40 50 Z" fill="#4D6B4F" />
+        </g>) : (<g>
+          <path d="M 40 80 Q 22 50 18 25" stroke="#5C7B5E" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M 40 80 Q 32 55 28 30" stroke="#4D6B4F" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M 40 80 Q 48 50 52 22" stroke="#5C7B5E" strokeWidth="3" fill="none" strokeLinecap="round" />
+        </g>)}
+      </svg>
+    </div>
+  );
+}
+
+function ParkBench({ left, bottom }) {
+  return (<div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px` }}>
+    <svg width="160" height="80" viewBox="0 0 160 80">
+      <ellipse cx="80" cy="76" rx="65" ry="3" fill="rgba(0,0,0,0.25)" />
+      <rect x="20" y="40" width="8" height="35" rx="2" fill="#3D2D22" />
+      <rect x="132" y="40" width="8" height="35" rx="2" fill="#3D2D22" />
+      <rect x="10" y="36" width="140" height="8" rx="2" fill="#5C3D2E" />
+      <rect x="14" y="14" width="132" height="6" rx="2" fill="#5C3D2E" />
+      <rect x="14" y="22" width="132" height="6" rx="2" fill="#5C3D2E" />
+      <ellipse cx="50" cy="34" rx="14" ry="3.5" fill="#9B6B7E" />
+    </svg>
+  </div>);
+}
+
+function ParkBoombox({ left, bottom }) {
+  return (<div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px` }}>
+    <svg width="80" height="60" viewBox="0 0 80 60">
+      <ellipse cx="40" cy="56" rx="30" ry="2.5" fill="rgba(0,0,0,0.25)" />
+      <rect x="8" y="14" width="64" height="38" rx="4" fill="#2D2D33" />
+      <circle cx="22" cy="34" r="9" fill="#1A1A22" />
+      <circle cx="22" cy="34" r="6" fill="#3D3D45" />
+      <circle cx="58" cy="34" r="9" fill="#1A1A22" />
+      <circle cx="58" cy="34" r="6" fill="#3D3D45" />
+      <rect x="34" y="28" width="12" height="6" rx="1" fill="#E0A95C" />
+      <path d="M 25 14 Q 40 4 55 14" stroke="#1F1F26" strokeWidth="2.5" fill="none" />
+    </svg>
+  </div>);
+}
+
+function ParkRailing() {
+  return (
+    <svg className="absolute left-0 right-0 pointer-events-none" style={{ bottom: "240px", width: "100%" }} height="50" viewBox="0 0 1000 50" preserveAspectRatio="none">
+      <rect x="0" y="0" width="1000" height="6" fill="#3D2D22" />
+      <rect x="0" y="40" width="1000" height="4" fill="#3D2D22" />
+      {Array.from({ length: 28 }).map((_, i) => (<rect key={i} x={i * 36 + 12} y="6" width="3" height="34" fill="#4D3D2F" />))}
+    </svg>
+  );
+}
+
+function ParkStars() {
+  // Deterministic star pattern (was Math.random — caused re-render flicker)
+  const stars = useMemo(() => Array.from({ length: 30 }).map((_, i) => ({
+    x: (i * 173) % 1000,
+    y: (i * 91) % 350,
+    r: 0.4 + ((i * 17) % 8) / 10,
+    o: 0.3 + ((i * 23) % 70) / 100,
+  })), []);
+  return (
+    <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: "100%", height: "40%" }} viewBox="0 0 1000 400" preserveAspectRatio="none">
+      {stars.map((s, i) => <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="white" opacity={s.o} />)}
+    </svg>
+  );
+}
+
+function ParkPet({ pet, isMe, isBot, onTap }) {
+  const emote = PARK_EMOTES.find(e => e.id === pet.emote);
+  return (
+    <div className="absolute" style={{
+      left: `${pet.x}px`, top: `${pet.y}px`,
+      transform: "translate(-50%, -100%)",
+      transition: "left 1100ms ease-out, top 1100ms ease-out",
+      pointerEvents: isBot ? "auto" : "none", cursor: isBot ? "pointer" : "default", zIndex: 10,
+    }} onClick={isBot && onTap ? (e) => { e.stopPropagation(); onTap(); } : undefined}>
+      {emote && (<div className="absolute left-1/2 -translate-x-1/2 -top-12 px-3 py-1 rounded-full text-xl"
+        style={{ background: "rgba(255, 248, 232, 0.95)", backdropFilter: "blur(8px)", color: "#2D1B33", animation: "bobble 0.6s ease-out" }}>
+        {emote.emoji}
+      </div>)}
+      <div style={{ animation: "idle 2.6s ease-in-out infinite" }}><ParkPetSVG pet={pet} size={76} /></div>
+      <div className="text-center mt-0.5">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px]" style={{
+          fontFamily: "'Outfit', sans-serif", fontWeight: 600,
+          background: isMe ? "rgba(224, 169, 92, 0.95)" : isBot ? "rgba(155, 138, 196, 0.85)" : "rgba(45, 27, 51, 0.65)",
+          color: isMe ? "#2D1B33" : isBot ? "#1A0F2E" : "rgba(255, 248, 232, 0.95)",
+          backdropFilter: "blur(8px)",
+        }}>
+          {isBot && <span style={{ fontSize: "9px", opacity: 0.7 }}>✦</span>}
+          {pet.name}{isMe && " · you"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HATCH WORLD OVERLAY — fullscreen Park experience.
+// Receives the user from HatchTeen and skips the entry stage by deriving the
+// pet automatically. onClose returns to the Social tab.
+// ════════════════════════════════════════════════════════════════════════════
+function HatchWorldOverlay({ user, onClose }) {
+  const cohortCode = "hatch"; // single global cohort for v1
+  const [stage, setStage] = useState("map");
+  const [myPet, setMyPet] = useState(() => deriveParkPetFromUser(user));
+  const [otherPets, setOtherPets] = useState([]);
+  const [storageWorks, setStorageWorks] = useState(true);
+  const [regulars, setRegulars] = useState(() =>
+    PARK_REGULARS.map(r => ({ ...r, x: r.home.x, y: r.home.y, emote: null, emoteUntil: 0 }))
+  );
+  const [tappedRegular, setTappedRegular] = useState(null);
+  const [drops, setDrops] = useState(PARK_SEED_DROPS);
+  const [tappedDrop, setTappedDrop] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerType, setPickerType] = useState("flower");
+  const [pickerCaption, setPickerCaption] = useState(null);
+  const [justDropped, setJustDropped] = useState(null);
+  const [tappedLocation, setTappedLocation] = useState(null);
+  const [svgDims, setSvgDims] = useState(() => {
+    const h = typeof window !== "undefined" ? Math.max(window.innerHeight - 140, 400) : 600;
+    return { w: Math.round(h * 2), h: Math.round(h) };
+  });
+  const myPetRef = useRef(null);
+  const sceneRef = useRef(null);
+  const mapScrollRef = useRef(null);
+  const petId = myPet.id;
+
+  useEffect(() => { myPetRef.current = myPet; }, [myPet]);
+
+  // Re-derive pet if user identity changes (e.g. they edited petName/petColor in HatchTeen)
+  useEffect(() => {
+    setMyPet(prev => ({ ...prev, name: (user.petName || "Pet").slice(0, 12), color: user.petColor || prev.color }));
+  }, [user.petName, user.petColor]);
+
+  // Map scroll: centre on rooftop (the only open location)
+  useEffect(() => {
+    if (stage !== "map") return;
+    let cancelled = false;
+    let scrolledOnce = false;
+
+    const updateAndMaybeScroll = () => {
+      if (cancelled || !mapScrollRef.current) return;
+      const el = mapScrollRef.current;
+      const h = el.clientHeight;
+      if (h <= 0) return;
+      const w = Math.round(h * 2);
+      setSvgDims({ w, h: Math.round(h) });
+
+      if (!scrolledOnce) {
+        scrolledOnce = true;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (cancelled || !mapScrollRef.current) return;
+            const rooftop = PARK_MAP_LOCATIONS.find(l => l.id === "rooftop");
+            const containerWidth = mapScrollRef.current.clientWidth;
+            const target = (rooftop.mapX * w / 1800) - containerWidth / 2;
+            mapScrollRef.current.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+          });
+        });
+      }
+    };
+
+    updateAndMaybeScroll();
+    const t1 = setTimeout(updateAndMaybeScroll, 50);
+    const t2 = setTimeout(updateAndMaybeScroll, 200);
+
+    let observer;
+    if (typeof ResizeObserver !== "undefined" && mapScrollRef.current) {
+      observer = new ResizeObserver(() => {
+        if (cancelled || !mapScrollRef.current) return;
+        const h = mapScrollRef.current.clientHeight;
+        if (h > 0) setSvgDims({ w: Math.round(h * 2), h: Math.round(h) });
+      });
+      observer.observe(mapScrollRef.current);
+    }
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t1); clearTimeout(t2);
+      observer?.disconnect();
+    };
+  }, [stage]);
+
+  function handleLocationTap(loc) { setTappedLocation(loc); }
+
+  function enterLocation(loc) {
+    if (loc.status === "soon") return;
+    // Position the pet inside the rooftop scene
+    if (typeof window !== "undefined") {
+      const winW = window.innerWidth, winH = window.innerHeight;
+      setMyPet(p => ({
+        ...p,
+        x: winW * 0.4 + Math.random() * winW * 0.2,
+        y: winH * 0.7 + Math.random() * winH * 0.05,
+      }));
+    }
+    setTappedLocation(null);
+    setStage(loc.id);
+  }
+
+  // ===== rooftop bot logic =====
+  useEffect(() => {
+    if (stage !== "rooftop") return;
+    const timeouts = [];
+    PARK_REGULARS.forEach((r, idx) => {
+      const animate = () => {
+        const w = window.innerWidth, h = window.innerHeight;
+        const baseX = (r.home.x / 1000) * w, baseY = (r.home.y / 800) * h;
+        const x = Math.max(80, Math.min(w - 80, baseX + (Math.random() - 0.5) * r.wander));
+        const y = Math.max(h * 0.62, Math.min(h - 60, baseY + (Math.random() - 0.5) * 50));
+        const shouldEmote = Math.random() < r.emoteChance;
+        const emote = shouldEmote ? r.favEmotes[Math.floor(Math.random() * r.favEmotes.length)] : null;
+        setRegulars(prev => prev.map(p => p.id === r.id ? { ...p, x, y, emote, emoteUntil: emote ? Date.now() + 3000 : 0 } : p));
+        const [min, max] = r.moveInterval;
+        timeouts.push(setTimeout(animate, min + Math.random() * (max - min)));
+      };
+      timeouts.push(setTimeout(animate, 1500 + idx * 1200));
+    });
+    return () => timeouts.forEach(clearTimeout);
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "rooftop") return;
+    const interval = setInterval(() => {
+      setRegulars(prev => prev.map(r => r.emoteUntil && Date.now() > r.emoteUntil ? { ...r, emote: null, emoteUntil: 0 } : r));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [stage]);
+
+  useEffect(() => {
+    if (!myPet?.emote) return;
+    setRegulars(prev => prev.map(r => {
+      const dx = r.x - myPet.x, dy = r.y - myPet.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 200 && Math.random() < 0.7) {
+        const reply = r.favEmotes[Math.floor(Math.random() * r.favEmotes.length)];
+        return { ...r, emote: reply, emoteUntil: Date.now() + 3000 };
+      }
+      return r;
+    }));
+  }, [myPet?.emote]);
+
+  // ===== shared multiplayer storage (window.storage) — gracefully degrades =====
+  useEffect(() => {
+    if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) { setStorageWorks(false); return; }
+    const key = `world:${cohortCode}:rooftop:pets:${petId}`;
+    const write = async () => {
+      if (!myPetRef.current) return;
+      try { await window.storage.set(key, JSON.stringify({ ...myPetRef.current, lastSeen: Date.now() }), true); }
+      catch (e) { setStorageWorks(false); }
+    };
+    write();
+    const interval = setInterval(write, 2500);
+    return () => { clearInterval(interval); window.storage?.delete?.(key, true).catch(() => {}); };
+  }, [stage, cohortCode, petId]);
+
+  useEffect(() => {
+    if (stage !== "rooftop" || !myPet) return;
+    if (typeof window === "undefined" || !window.storage) return;
+    const key = `world:${cohortCode}:rooftop:pets:${petId}`;
+    window.storage.set(key, JSON.stringify({ ...myPet, lastSeen: Date.now() }), true).catch(() => setStorageWorks(false));
+  }, [myPet?.x, myPet?.y, myPet?.emote]);
+
+  useEffect(() => {
+    if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) return;
+    const read = async () => {
+      try {
+        const result = await window.storage.list(`world:${cohortCode}:rooftop:pets:`, true);
+        if (!result?.keys) return;
+        const pets = [];
+        for (const k of result.keys) {
+          if (k === `world:${cohortCode}:rooftop:pets:${petId}`) continue;
+          try {
+            const r = await window.storage.get(k, true);
+            if (r?.value) {
+              const p = JSON.parse(r.value);
+              if (Date.now() - p.lastSeen < 30000) {
+                if (p.emoteUntil && Date.now() > p.emoteUntil) p.emote = null;
+                pets.push(p);
+              }
+            }
+          } catch (e) {}
+        }
+        setOtherPets(pets);
+      } catch (e) { setStorageWorks(false); }
+    };
+    read();
+    const interval = setInterval(read, 2000);
+    return () => clearInterval(interval);
+  }, [stage, cohortCode, petId]);
+
+  useEffect(() => {
+    if (!myPet?.emote) return;
+    const t = setTimeout(() => setMyPet(p => p ? { ...p, emote: null, emoteUntil: 0 } : p), 3000);
+    return () => clearTimeout(t);
+  }, [myPet?.emote]);
+
+  useEffect(() => {
+    if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) return;
+    const read = async () => {
+      try {
+        const result = await window.storage.list(`world:${cohortCode}:rooftop:drops:`, true);
+        if (!result?.keys) return;
+        const fetched = [];
+        for (const k of result.keys) {
+          try {
+            const r = await window.storage.get(k, true);
+            if (r?.value) {
+              const d = JSON.parse(r.value);
+              const age = Date.now() - d.timestamp;
+              if (age < PARK_DROP_TTL_MS) fetched.push(d);
+              else window.storage.delete(k, true).catch(() => {});
+            }
+          } catch (e) {}
+        }
+        setDrops(prev => {
+          const seeds = prev.filter(d => d.id.startsWith("seed_"));
+          return [...seeds, ...fetched];
+        });
+      } catch (e) {}
+    };
+    read();
+    const interval = setInterval(read, 6000);
+    return () => clearInterval(interval);
+  }, [stage, cohortCode]);
+
+  function createDrop() {
+    if (!myPet) return;
+    const sceneEl = sceneRef.current;
+    if (!sceneEl) return;
+    const rect = sceneEl.getBoundingClientRect();
+    const drop = {
+      id: parkGenerateDropId(), type: pickerType,
+      x: Math.max(0.05, Math.min(0.95, myPet.x / rect.width)),
+      y: Math.max(0.6, Math.min(0.95, myPet.y / rect.height)),
+      caption: pickerCaption, fromName: myPet.name, fromColor: myPet.color, timestamp: Date.now(),
+    };
+    setDrops(prev => [...prev, drop]);
+    if (typeof window !== "undefined" && window.storage) {
+      const key = `world:${cohortCode}:rooftop:drops:${drop.id}`;
+      window.storage.set(key, JSON.stringify(drop), true).catch(() => setStorageWorks(false));
+    }
+    setPickerOpen(false);
+    setJustDropped(drop);
+    setTimeout(() => setJustDropped(null), 2400);
+  }
+
+  function handleClick(e) {
+    if (!myPet || pickerOpen) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(60, Math.min(rect.width - 60, e.clientX - rect.left));
+    const y = Math.max(rect.height * 0.62, Math.min(rect.height - 50, e.clientY - rect.top));
+    setMyPet(p => ({ ...p, x, y }));
+  }
+
+  function doEmote(emoteId) {
+    setMyPet(p => p ? { ...p, emote: emoteId, emoteUntil: Date.now() + 3000 } : p);
+  }
+
+  const fontStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Caprasimo&family=Outfit:wght@400;500;600;700&display=swap');
+    @keyframes idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+    @keyframes bobble { 0% { transform: scale(0.5) translateY(8px); opacity: 0; } 60% { transform: scale(1.1) translateY(-2px); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes sway { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
+    @keyframes glow { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
+    @keyframes fadeUp { 0% { opacity: 0; transform: translate(-50%, 8px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
+    @keyframes slideUp { 0% { opacity: 0; transform: translateY(100%); } 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes dropFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @keyframes dropPulse { 0%, 100% { filter: drop-shadow(0 0 4px rgba(255, 224, 102, 0.4)); } 50% { filter: drop-shadow(0 0 12px rgba(255, 224, 102, 0.8)); } }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
+    @keyframes mapPet { 0%, 100% { transform: translate(-50%, -100%) translateY(0); } 50% { transform: translate(-50%, -100%) translateY(-2px); } }
+    @keyframes smoke { 0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.4; } 100% { transform: translateY(-15px) translateX(5px) scale(1.5); opacity: 0; } }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  `;
+
+  // ===== MAP =====
+  if (stage === "map") {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "#0F0820", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
+        <style>{fontStyles}</style>
+
+        {/* Header */}
+        <div className="px-5 py-3 flex items-center justify-between relative z-30" style={{
+          background: "rgba(15, 8, 32, 0.7)", backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(255, 248, 232, 0.1)",
+        }}>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5"
+              style={{ background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.85)",
+                border: "1px solid rgba(255, 248, 232, 0.15)", fontWeight: 600, cursor: "pointer" }}>
+              ← Back
+            </button>
+            <div>
+              <div style={{ fontFamily: "'Caprasimo', cursive", color: "#FFF8E8", fontSize: "20px" }}>
+                Where to, {myPet.name}?
+              </div>
+              <div className="text-[11px]" style={{ color: "rgba(255, 248, 232, 0.55)", fontWeight: 500 }}>
+                The Park · scroll to wander
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Map (scrollable landscape) */}
+        <div ref={mapScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden no-scrollbar relative"
+          style={{ overscrollBehavior: "contain", touchAction: "pan-x" }}>
+          <svg viewBox="0 0 1800 900" preserveAspectRatio="xMidYMid meet"
+            width={svgDims.w} height={svgDims.h}
+            style={{ display: "block" }}
+            onClick={() => setTappedLocation(null)}>
+            <defs>
+              <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0F0820" />
+                <stop offset="20%" stopColor="#2D1B4E" />
+                <stop offset="50%" stopColor="#5C2A6B" />
+                <stop offset="75%" stopColor="#C44A6E" />
+                <stop offset="100%" stopColor="#E89868" />
+              </linearGradient>
+              <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#3D2519" />
+                <stop offset="100%" stopColor="#1A0F0A" />
+              </linearGradient>
+              <linearGradient id="oceanGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5FA8CF" />
+                <stop offset="100%" stopColor="#2D5C7F" />
+              </linearGradient>
+              <linearGradient id="glassShine" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(255,255,255,0.4)" />
+                <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+              </linearGradient>
+              <linearGradient id="buildingFade" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(232, 152, 104, 0.3)" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+              </linearGradient>
+              <linearGradient id="roofShade2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
+              </linearGradient>
+              <radialGradient id="windowGlow" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0%" stopColor="rgba(255, 220, 150, 0.6)" />
+                <stop offset="100%" stopColor="rgba(255, 208, 128, 0)" />
+              </radialGradient>
+              <linearGradient id="dinerFade" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(232, 54, 155, 0.3)" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+              </linearGradient>
+            </defs>
+
+            <rect width="1800" height="900" fill="url(#skyGrad)" />
+
+            {Array.from({ length: 80 }).map((_, i) => {
+              // Deterministic positions (was Math.random — caused flicker)
+              const x = (i * 211) % 1800, y = (i * 67) % 350;
+              const r = 0.4 + ((i * 19) % 12) / 10;
+              return <circle key={i} cx={x} cy={y} r={r} fill="white" opacity={0.5 + ((i * 31) % 50) / 100} />;
+            })}
+
+            <circle cx="900" cy="500" r="80" fill="#FFE066" opacity="0.4" />
+            <circle cx="900" cy="500" r="50" fill="#FFEFA8" opacity="0.6" />
+
+            <path d="M 0 500 L 150 380 L 280 460 L 420 360 L 580 440 L 720 380 L 880 420 L 1040 360 L 1200 430 L 1360 380 L 1520 440 L 1680 390 L 1800 430 L 1800 600 L 0 600 Z"
+              fill="#1A0F33" opacity="0.6" />
+
+            <path d="M 0 580 L 200 480 L 380 530 L 540 460 L 720 510 L 920 470 L 1100 520 L 1280 470 L 1480 510 L 1680 480 L 1800 510 L 1800 700 L 0 700 Z"
+              fill="#2D1B4E" opacity="0.7" />
+
+            <ellipse cx="540" cy="600" rx="280" ry="80" fill="#4D6B4F" />
+            <ellipse cx="540" cy="595" rx="240" ry="60" fill="#5C7B5E" />
+            <ellipse cx="1100" cy="650" rx="200" ry="60" fill="#4D5C7F" opacity="0.7" />
+            <ellipse cx="1500" cy="640" rx="180" ry="55" fill="#5C3D5C" opacity="0.6" />
+
+            <path d="M 0 720 Q 100 715 220 720 L 350 730 L 350 900 L 0 900 Z" fill="url(#oceanGrad)" />
+            <path d="M 0 740 Q 80 736 180 740 Q 260 744 350 740" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" fill="none" />
+            <path d="M 0 760 Q 100 758 200 760 Q 280 762 350 760" stroke="rgba(255,255,255,0.2)" strokeWidth="0.8" fill="none" />
+            <path d="M 0 780 Q 90 778 200 780 Q 280 782 350 780" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" fill="none" />
+
+            <path d="M 0 720 Q 100 715 220 720 L 350 730 L 600 700 L 900 720 L 1200 705 L 1500 715 L 1800 700 L 1800 900 L 0 900 Z"
+              fill="url(#groundGrad)" />
+
+            <path d="M 200 840 Q 380 820 540 800 Q 720 780 880 760 Q 1050 750 1220 770 Q 1400 790 1560 800 L 1800 820"
+              stroke="#7B5337" strokeWidth="14" fill="none" strokeLinecap="round" opacity="0.6" />
+            <path d="M 200 840 Q 380 820 540 800 Q 720 780 880 760 Q 1050 750 1220 770 Q 1400 790 1560 800 L 1800 820"
+              stroke="#A07B5C" strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray="3 8" opacity="0.5" />
+
+            <ellipse cx="300" cy="200" rx="50" ry="12" fill="white" opacity="0.6" />
+            <ellipse cx="320" cy="195" rx="35" ry="14" fill="white" opacity="0.6" />
+            <ellipse cx="1100" cy="250" rx="45" ry="11" fill="white" opacity="0.5" />
+            <ellipse cx="1120" cy="245" rx="30" ry="13" fill="white" opacity="0.5" />
+            <ellipse cx="1500" cy="180" rx="55" ry="13" fill="white" opacity="0.5" />
+
+            <path d="M 600 220 Q 605 215 610 220 Q 615 215 620 220" stroke="#1A0F33" strokeWidth="1.5" fill="none" />
+            <path d="M 1300 200 Q 1305 195 1310 200 Q 1315 195 1320 200" stroke="#1A0F33" strokeWidth="1.5" fill="none" />
+
+            {PARK_MAP_LOCATIONS.map(loc => {
+              const Comp = PARK_LANDMARK_COMPONENTS[loc.id];
+              return <Comp key={loc.id} x={loc.mapX} y={loc.mapY} isOpen={loc.status === "open"}
+                onTap={(e) => { e.stopPropagation(); handleLocationTap(loc); }} />;
+            })}
+
+            {PARK_MAP_LOCATIONS.map(loc => (
+              <g key={`label-${loc.id}`} transform={`translate(${loc.mapX}, ${loc.mapY - 160})`}
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onClick={(e) => { e.stopPropagation(); handleLocationTap(loc); }}>
+                <rect x="-60" y="-22" width="120" height="28" rx="14"
+                  fill="rgba(15, 8, 32, 0.85)" stroke="rgba(255, 248, 232, 0.2)" strokeWidth="1" />
+                <text x="0" y="-3" textAnchor="middle" fontFamily="'Outfit', sans-serif" fontSize="13" fontWeight="600"
+                  fill={loc.status === "open" ? "#E0A95C" : "rgba(255, 248, 232, 0.85)"}>
+                  {loc.name}
+                </text>
+                {loc.status === "open" ? (
+                  <>
+                    <circle cx="-46" cy="-9" r="3" fill="#5FD48A" style={{ filter: "drop-shadow(0 0 4px #5FD48A)" }} />
+                    <circle cx="-46" cy="-9" r="3" fill="#5FD48A" style={{ animation: "pulse 2s ease-in-out infinite" }} />
+                  </>
+                ) : (
+                  <text x="46" y="-1" textAnchor="middle" fontFamily="'Outfit', sans-serif" fontSize="9"
+                    fill="rgba(255, 248, 232, 0.5)" letterSpacing="1">soon</text>
+                )}
+              </g>
+            ))}
+
+            {/* Pet preview hovering near rooftop */}
+            {(() => {
+              const rooftop = PARK_MAP_LOCATIONS.find(l => l.id === "rooftop");
+              return (
+                <g transform={`translate(${rooftop.mapX - 100}, ${rooftop.mapY + 30})`} style={{ animation: "mapPet 2.6s ease-in-out infinite" }}>
+                  <foreignObject x="-30" y="-65" width="60" height="70">
+                    <ParkPetSVG pet={myPet} size={56} />
+                  </foreignObject>
+                  <rect x="-30" y="8" width="60" height="16" rx="8" fill="#F4B740" stroke="#1A0F2E" strokeWidth="1" />
+                  <text x="0" y="19" textAnchor="middle" fontFamily="'Outfit', sans-serif" fontSize="10" fontWeight="700" fill="#1A0F2E">
+                    {myPet.name} · you
+                  </text>
+                </g>
+              );
+            })()}
+          </svg>
+        </div>
+
+        {/* Tapped location card */}
+        {tappedLocation && (
+          <>
+            <div className="absolute inset-0 z-40" style={{ background: "rgba(15, 8, 32, 0.5)", backdropFilter: "blur(4px)" }}
+              onClick={() => setTappedLocation(null)} />
+            <div className="absolute left-1/2 z-50 rounded-3xl p-6 max-w-[340px] w-[88vw]"
+              style={{
+                top: "50%", transform: "translate(-50%, -50%)",
+                background: "rgba(15, 8, 32, 0.95)", backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255, 248, 232, 0.18)",
+                boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
+                animation: "fadeUp 0.3s ease-out",
+              }}>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 style={{ fontFamily: "'Caprasimo', cursive", fontSize: "26px", color: "#FFF8E8" }}>
+                  {tappedLocation.name}
+                </h2>
+                {tappedLocation.status === "open" ? (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] flex items-center gap-1.5" style={{
+                    background: "rgba(95, 212, 138, 0.2)", color: "#5FD48A",
+                    fontWeight: 600, letterSpacing: "0.08em",
+                    border: "1px solid rgba(95, 212, 138, 0.4)",
+                  }}>
+                    <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#5FD48A" }} />
+                    OPEN
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full text-[10px]" style={{
+                    background: "rgba(255, 248, 232, 0.1)", color: "rgba(255, 248, 232, 0.6)",
+                    fontWeight: 600, letterSpacing: "0.08em",
+                  }}>SOON</span>
+                )}
+              </div>
+              <p style={{ color: "rgba(255, 248, 232, 0.65)", fontSize: "14px", marginBottom: "16px" }}>
+                {tappedLocation.vibe} · <span style={{ color: "#E0A95C" }}>{tappedLocation.time}</span>
+              </p>
+
+              {tappedLocation.status === "open" && (
+                <div className="flex gap-3 mb-4 text-[12px]">
+                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{otherPets.length + 1 + regulars.length}</span> pets here
+                  </div>
+                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{drops.length}</span> gifts waiting
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.45)", marginBottom: "20px", letterSpacing: "0.04em" }}>
+                Regulars: {tappedLocation.regulars.join(", ")}
+              </div>
+
+              <button onClick={() => enterLocation(tappedLocation)}
+                disabled={tappedLocation.status !== "open"}
+                className="w-full py-3 rounded-2xl transition-all active:scale-95"
+                style={{
+                  background: tappedLocation.status === "open" ? "linear-gradient(135deg, #E0A95C, #C4744A)" : "rgba(255, 248, 232, 0.08)",
+                  color: tappedLocation.status === "open" ? "#FFF8E8" : "rgba(255, 248, 232, 0.5)",
+                  fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: "15px",
+                  boxShadow: tappedLocation.status === "open" ? "0 8px 24px rgba(196, 116, 74, 0.4)" : "none",
+                  border: tappedLocation.status === "open" ? "none" : "1px solid rgba(255, 248, 232, 0.12)",
+                  cursor: tappedLocation.status === "open" ? "pointer" : "not-allowed",
+                }}>
+                {tappedLocation.status === "open" ? `Take ${myPet.name} here →` : "Opens soon"}
+              </button>
+              <button onClick={() => setTappedLocation(null)} className="w-full text-xs mt-2 py-1.5"
+                style={{ color: "rgba(255, 248, 232, 0.5)", fontWeight: 500, background: "none", border: "none", cursor: "pointer" }}>
+                close
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Bottom hint */}
+        <div className="px-6 py-3 relative z-10 text-center" style={{
+          background: "rgba(15, 8, 32, 0.6)", backdropFilter: "blur(8px)",
+          borderTop: "1px solid rgba(255, 248, 232, 0.08)",
+        }}>
+          <p style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.06em" }}>
+            ← swipe across the world · tap a place to enter
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== ROOFTOP (default for any opened location since only rooftop is "open") =====
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
+      <style>{fontStyles}</style>
+
+      <div className="px-5 py-3 flex items-center justify-between" style={{
+        background: "rgba(20, 10, 40, 0.55)", backdropFilter: "blur(16px)",
+        borderBottom: "1px solid rgba(255, 248, 232, 0.1)",
+      }}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setStage("map")} className="px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5"
+            style={{
+              background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.85)",
+              border: "1px solid rgba(255, 248, 232, 0.15)", fontWeight: 600, cursor: "pointer",
+            }}>
+            ← Map
+          </button>
+          <div>
+            <div style={{ fontFamily: "'Caprasimo', cursive", color: "#FFF8E8", fontSize: "17px" }}>The Rooftop</div>
+            <div className="text-[11px]" style={{ color: "rgba(255, 248, 232, 0.55)", fontWeight: 500 }}>
+              {otherPets.length + 1} here · {drops.length} gifts
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-full"
+          style={{
+            background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.7)",
+            border: "1px solid rgba(255, 248, 232, 0.15)", cursor: "pointer",
+          }}>
+          Leave
+        </button>
+      </div>
+
+      <div ref={sceneRef} className="flex-1 relative cursor-pointer overflow-hidden" onClick={handleClick}
+        style={{ background: "linear-gradient(180deg, #1A0F33 0%, #3D1B4E 18%, #7B2A5C 38%, #C44A6E 58%, #E89868 78%, #F4C490 100%)" }}>
+        <ParkStars />
+        <div className="absolute pointer-events-none" style={{
+          bottom: "320px", left: "50%", transform: "translateX(-50%)",
+          width: "180px", height: "180px", borderRadius: "50%",
+          background: "radial-gradient(circle, #FFE066 0%, #E89868 40%, transparent 70%)",
+          filter: "blur(2px)", animation: "glow 4s ease-in-out infinite",
+        }} />
+        <ParkCitySkyline />
+        <ParkRailing />
+        <ParkFairyLights y={50} count={10} />
+
+        <div className="absolute left-0 right-0 bottom-0 pointer-events-none" style={{ height: "240px" }}>
+          <svg className="w-full h-full" viewBox="0 0 1000 240" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5C3D2E" /><stop offset="100%" stopColor="#3D2519" />
+              </linearGradient>
+              <pattern id="planks" x="0" y="0" width="80" height="240" patternUnits="userSpaceOnUse">
+                <rect width="80" height="240" fill="url(#floorGrad)" />
+                <line x1="0" y1="0" x2="0" y2="240" stroke="#2D1A12" strokeWidth="1.5" opacity="0.6" />
+              </pattern>
+              <linearGradient id="warmwash" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(232, 152, 104, 0.25)" /><stop offset="100%" stopColor="rgba(20, 10, 30, 0.4)" />
+              </linearGradient>
+            </defs>
+            <rect width="1000" height="240" fill="url(#planks)" />
+            <rect width="1000" height="240" fill="url(#warmwash)" />
+          </svg>
+        </div>
+
+        <ParkPottedPlant left="4%" bottom={190} kind="monstera" />
+        <ParkPottedPlant left="87%" bottom={190} kind="grass" />
+        <ParkPottedPlant left="13%" bottom={70} kind="grass" />
+        <ParkPottedPlant left="82%" bottom={75} kind="monstera" />
+        <ParkBench left="22%" bottom={130} />
+        <ParkBoombox left="58%" bottom={140} />
+
+        {drops.map(d => <ParkDrop key={d.id} drop={d} onTap={(drop) => setTappedDrop(drop)} />)}
+        {regulars.map(r => <ParkPet key={r.id} pet={r} isBot={true} onTap={() => setTappedRegular(r)} />)}
+        {otherPets.map(p => <ParkPet key={p.id} pet={p} isMe={false} />)}
+        {myPet && <ParkPet pet={myPet} isMe={true} />}
+
+        {tappedDrop && (
+          <div className="absolute left-1/2 px-5 py-4 rounded-2xl pointer-events-auto" style={{
+            top: "20%", transform: "translateX(-50%)",
+            background: "rgba(20, 10, 40, 0.92)", backdropFilter: "blur(16px)",
+            color: "rgba(255, 248, 232, 0.95)",
+            border: "1px solid rgba(255, 248, 232, 0.18)",
+            animation: "fadeUp 0.3s ease-out", maxWidth: "280px", minWidth: "240px", zIndex: 50,
+          }} onClick={(e) => { e.stopPropagation(); setTappedDrop(null); }}>
+            <div className="flex items-center gap-3 mb-2">
+              <ParkDropIcon type={tappedDrop.type} size={36} />
+              <div className="flex-1">
+                <div style={{ fontSize: "10px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase" }}>From</div>
+                <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "18px", color: tappedDrop.fromColor }}>
+                  {tappedDrop.fromName}
+                </div>
+              </div>
+            </div>
+            {tappedDrop.caption && (
+              <div style={{
+                fontSize: "14px", color: "#FFF8E8", marginTop: "8px",
+                fontStyle: "italic", padding: "8px 12px",
+                background: "rgba(255, 248, 232, 0.06)",
+                borderLeft: `2px solid ${tappedDrop.fromColor}`, borderRadius: "0 8px 8px 0",
+              }}>
+                "{tappedDrop.caption}"
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.4)", marginTop: "10px" }}>
+              {parkTimeAgo(tappedDrop.timestamp)} · tap to dismiss
+            </div>
+          </div>
+        )}
+
+        {tappedRegular && !tappedDrop && (
+          <div className="absolute left-1/2 px-4 py-2 rounded-2xl text-xs pointer-events-auto" style={{
+            top: "20%", transform: "translateX(-50%)",
+            background: "rgba(20, 10, 40, 0.85)", backdropFilter: "blur(16px)",
+            color: "rgba(255, 248, 232, 0.95)",
+            border: "1px solid rgba(255, 248, 232, 0.18)",
+            animation: "fadeUp 0.3s ease-out", fontWeight: 500, maxWidth: "280px",
+          }} onClick={(e) => { e.stopPropagation(); setTappedRegular(null); }}>
+            <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "16px", color: "#E0A95C" }}>{tappedRegular.name}</div>
+            <div style={{ marginTop: "3px", color: "rgba(255, 248, 232, 0.7)" }}>{tappedRegular.bio}</div>
+          </div>
+        )}
+
+        {justDropped && (
+          <div className="absolute left-1/2 px-4 py-2 rounded-full pointer-events-none" style={{
+            top: "12%", transform: "translateX(-50%)",
+            background: "rgba(224, 169, 92, 0.95)", color: "#1A0F2E",
+            fontSize: "13px", fontWeight: 600, animation: "fadeUp 0.4s ease-out",
+          }}>
+            ✦ left a {justDropped.type} for whoever finds it
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 py-3 flex items-center justify-center gap-2" style={{
+        background: "rgba(20, 10, 40, 0.65)", backdropFilter: "blur(16px)",
+        borderTop: "1px solid rgba(255, 248, 232, 0.1)",
+      }}>
+        {PARK_EMOTES.map(e => (
+          <button key={e.id} onClick={() => doEmote(e.id)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{
+            width: "54px", height: "52px",
+            background: myPet?.emote === e.id ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.06)",
+            border: myPet?.emote === e.id ? "1px solid rgba(224, 169, 92, 0.5)" : "1px solid rgba(255, 248, 232, 0.1)",
+            cursor: "pointer",
+          }}>
+            <span style={{ fontSize: "20px", lineHeight: 1, color: "#FFF8E8" }}>{e.emoji}</span>
+            <span style={{ fontSize: "9px", marginTop: "2px", color: "rgba(255, 248, 232, 0.7)" }}>{e.label}</span>
+          </button>
+        ))}
+        <div style={{ width: "1px", height: "32px", background: "rgba(255, 248, 232, 0.15)", margin: "0 4px" }} />
+        <button onClick={() => setPickerOpen(true)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{
+          width: "62px", height: "52px",
+          background: "linear-gradient(135deg, rgba(224, 169, 92, 0.25), rgba(196, 74, 110, 0.25))",
+          border: "1px solid rgba(224, 169, 92, 0.5)", cursor: "pointer",
+        }}>
+          <span style={{ fontSize: "18px", lineHeight: 1, color: "#FFE066" }}>✦</span>
+          <span style={{ fontSize: "9px", marginTop: "3px", color: "#E0A95C", fontWeight: 600 }}>Leave gift</span>
+        </button>
+      </div>
+
+      {pickerOpen && (
+        <>
+          <div className="absolute inset-0 z-40" style={{ background: "rgba(20, 10, 40, 0.4)", backdropFilter: "blur(4px)" }} onClick={() => setPickerOpen(false)} />
+          <div className="absolute left-0 right-0 bottom-0 z-50 px-5 pt-5 pb-6 rounded-t-3xl" style={{
+            background: "rgba(20, 10, 40, 0.95)", backdropFilter: "blur(20px)",
+            borderTop: "1px solid rgba(255, 248, 232, 0.18)", animation: "slideUp 0.3s ease-out",
+          }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 style={{ fontFamily: "'Caprasimo', cursive", fontSize: "20px", color: "#FFF8E8" }}>Leave a gift</h3>
+              <button onClick={() => setPickerOpen(false)} className="text-xs px-3 py-1 rounded-full" style={{
+                background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.7)",
+                border: "1px solid rgba(255, 248, 232, 0.15)", cursor: "pointer",
+              }}>Cancel</button>
+            </div>
+
+            <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "8px" }}>Pick something</div>
+            <div className="grid grid-cols-6 gap-2 mb-5">
+              {PARK_DROP_TYPES.map(t => {
+                const active = pickerType === t.id;
+                return (
+                  <button key={t.id} onClick={() => setPickerType(t.id)} className="flex flex-col items-center justify-center py-3 rounded-2xl transition-all" style={{
+                    background: active ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.05)",
+                    border: active ? "1px solid rgba(224, 169, 92, 0.6)" : "1px solid rgba(255, 248, 232, 0.1)",
+                    cursor: "pointer",
+                  }}>
+                    <ParkDropIcon type={t.id} size={28} />
+                    <span style={{ fontSize: "10px", marginTop: "4px", color: active ? "#E0A95C" : "rgba(255, 248, 232, 0.6)", fontWeight: 500 }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "8px" }}>Add a note (optional)</div>
+            <div className="flex gap-1.5 mb-5 flex-wrap">
+              {PARK_CAPTIONS.map((c, i) => {
+                const active = pickerCaption === c;
+                return (
+                  <button key={i} onClick={() => setPickerCaption(c)} className="rounded-full px-3.5 py-1.5 transition-all" style={{
+                    background: active ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.05)",
+                    border: active ? "1px solid rgba(224, 169, 92, 0.6)" : "1px solid rgba(255, 248, 232, 0.12)",
+                    color: active ? "#E0A95C" : "rgba(255, 248, 232, 0.7)",
+                    fontSize: "12px", fontWeight: 500, cursor: "pointer",
+                  }}>{c || "no note"}</button>
+                );
+              })}
+            </div>
+
+            <button onClick={createDrop} className="w-full py-3 rounded-2xl transition-all" style={{
+              background: "linear-gradient(135deg, #E0A95C, #C4744A)",
+              color: "#FFF8E8", fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: "15px",
+              boxShadow: "0 8px 24px rgba(196, 116, 74, 0.4)", border: "none", cursor: "pointer",
+            }}>
+              ✦ Drop it on the rooftop
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SOCIAL SCREEN — modules list (parallel to LearnScreen). Add new social
+// situations here as you build them.
+// ════════════════════════════════════════════════════════════════════════════
+const SOCIAL_MODULES = [
+  {
+    id: 'park',
+    title: 'The Park',
+    emoji: '🌅',
+    tagline: 'Five places to wander. Drop gifts. See who else is around.',
+    color: '#E0A95C',
+    relatedCategories: ['community'],
+    relatedLabel: 'Helps with social skills & community participation',
+    activities: [
+      { id: 'rooftop',    title: 'The Rooftop',    emoji: '🌇', color: '#E0A95C', desc: 'Sunset · fairy lights · regulars hanging out',  status: 'open' },
+      { id: 'beach',      title: 'The Beach',      emoji: '🏖️', color: '#5FA8CF', desc: 'Sand · palms · ocean · midday',                  status: 'soon' },
+      { id: 'greenhouse', title: 'The Greenhouse', emoji: '🌱', color: '#7FA88E', desc: 'Plants · koi pond · afternoon',                  status: 'soon' },
+      { id: 'den',        title: 'The Den',        emoji: '🏠', color: '#B47A8E', desc: 'Rainy · cozy · late night',                      status: 'soon' },
+      { id: 'diner',      title: 'The Diner',      emoji: '🍔', color: '#FF6BB8', desc: 'Neon · milkshakes · late night',                 status: 'soon' },
+    ],
+  },
+];
+
+function getLinkedSocialModules(goals) {
+  const active = (goals || []).filter(g => !g.completed);
+  return SOCIAL_MODULES.map(mod => {
+    const linked = active.filter(g => mod.relatedCategories.includes(g.category));
+    return { ...mod, linkedGoals: linked };
+  }).filter(mod => mod.linkedGoals.length > 0);
+}
+
+function SocialScreen({ user, setUser }) {
+  const [activeModule, setActiveModule] = useState(null); // module id (e.g. 'park')
+
+  const linked = getLinkedSocialModules(user.goals);
+
+  // ── Active module (currently only Park has an overlay) ────────────────────
+  if (activeModule === 'park') {
+    return <HatchWorldOverlay user={user} onClose={() => setActiveModule(null)} />;
+  }
+
+  // ── Main screen ───────────────────────────────────────────────────────────
+  return (
+    <div style={{ ...pageStyle, paddingBottom: 100 }}>
+      <h1 style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 28, color: T.text, letterSpacing: '-0.3px', marginBottom: 6 }}>Social</h1>
+      <p style={{ color: T.muted, fontSize: 13, fontFamily: 'DM Sans', marginBottom: 24 }}>
+        Practice being around others — at your own pace, in your own way.
+      </p>
+
+      {linked.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 11, color: T.teal, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+            🎯 For your goals
+          </div>
+          {linked.map(mod => (
+            <div key={mod.id} style={{ marginBottom: 12 }}>
+              <SocialModuleCard mod={mod} onOpen={() => setActiveModule(mod.id)} />
+              <div style={{ padding: '8px 14px', background: `${T.teal}0a`, border: `1px solid ${T.teal}22`, borderTop: 'none', borderRadius: '0 0 14px 14px', marginTop: -4 }}>
+                <div style={{ fontSize: 11, color: T.teal, fontFamily: 'DM Sans', fontWeight: 600 }}>
+                  {mod.relatedLabel} · Linked to: {mod.linkedGoals.map(g => g.title).join(', ')}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 11, color: T.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
+          🌐 Social situations
+        </div>
+        {SOCIAL_MODULES.map(mod => (
+          <div key={mod.id} style={{ marginBottom: 12 }}>
+            <SocialModuleCard mod={mod} onOpen={() => setActiveModule(mod.id)} />
+          </div>
+        ))}
+        {[
+          { emoji: '📞', title: 'Phone Calls',     tagline: 'Ordering food, booking appointments', color: T.blue },
+          { emoji: '👋', title: 'Saying Hello',    tagline: 'Greetings, small talk, eye contact',  color: T.amber },
+          { emoji: '🙋', title: 'Asking for Help', tagline: 'In shops, at school, with strangers', color: T.pink },
+        ].map(t => (
+          <div key={t.title} style={{
+            background: T.surface, border: `1px dashed ${T.border}`, borderRadius: 16,
+            padding: '14px 16px', marginBottom: 10, opacity: 0.5,
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            <span style={{ fontSize: 28 }}>{t.emoji}</span>
+            <div>
+              <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 14, color: T.muted }}>{t.title}</div>
+              <div style={{ color: T.subtle, fontSize: 11, marginTop: 2 }}>{t.tagline}</div>
+            </div>
+            <div style={{ marginLeft: 'auto', background: T.card, borderRadius: 8, padding: '4px 10px', fontSize: 10, color: T.subtle, fontWeight: 700, fontFamily: 'DM Sans' }}>
+              COMING SOON
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SocialModuleCard({ mod, onOpen }) {
+  return (
+    <button onClick={onOpen} style={{
+      width: '100%', background: T.card,
+      border: `1.5px solid ${mod.color}44`, borderRadius: 16,
+      padding: '16px 18px', cursor: 'pointer', textAlign: 'left',
+      display: 'flex', alignItems: 'center', gap: 14, fontFamily: 'DM Sans',
+    }}>
+      <div style={{ width: 52, height: 52, borderRadius: 14, flexShrink: 0, background: `${mod.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
+        {mod.emoji}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 15, color: T.text, marginBottom: 3 }}>{mod.title}</div>
+        <div style={{ color: T.muted, fontSize: 12, marginBottom: 8 }}>{mod.tagline}</div>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {mod.activities.map(a => (
+            <span key={a.id} style={{
+              background: a.status === 'open' ? `${a.color}22` : `${T.muted}11`,
+              color: a.status === 'open' ? a.color : T.muted,
+              fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+              fontFamily: 'DM Sans', textTransform: 'uppercase', letterSpacing: 0.4,
+            }}>
+              {a.emoji} {a.title.split(' ').slice(-1)[0]}
+              {a.status === 'soon' && ' · soon'}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ChevronRight size={18} color={mod.color} />
+    </button>
+  );
+}
+
+
 // ─── LEARN SCREEN ────────────────────────────────────────────────────────────
 function LearnScreen({ user, setUser }) {
   const [activeModule,   setActiveModule]   = useState(null);
@@ -13259,7 +14687,8 @@ function BottomNav({ tab, setTab }) {
   const tabs = [
     { id: 'home',    label: 'Home',    icon: HomeIcon },
     { id: 'goals',   label: 'Goals',   icon: Target },
-    { id: 'learn',   label: 'Learn/Earn', icon: BookOpen },
+    { id: 'learn',   label: 'Learn',   icon: BookOpen },
+    { id: 'social',  label: 'Social',  icon: Heart },
     { id: 'shop',    label: 'Shop',    icon: ShoppingBag },
     { id: 'friends', label: 'Friends', icon: Users },
   ];
@@ -13474,6 +14903,7 @@ export default function App() {
           openNewGoal={() => setShowNewGoal(true)} />
       )}
       {tab === 'learn' && <LearnScreen user={user} setUser={setUserAndSave} />}
+      {tab === 'social' && <SocialScreen user={user} setUser={setUserAndSave} />}
       {tab === 'shop' && <ShopScreen user={user} setUser={setUserAndSave} />}
       {tab === 'friends' && <FriendsScreen user={user} />}
       <BottomNav tab={tab} setTab={setTab} />
