@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, Users, User, Trash2, Edit2, Check, X, ChevronRight, ShoppingBag, ClipboardList, FileText } from 'lucide-react';
+import { LogOut, Plus, Users, User, Trash2, Edit2, Check, X, ChevronRight, ShoppingBag, ClipboardList, FileText, ChevronLeft } from 'lucide-react';
 
 const T = {
   bg: '#050b14', surface: '#0d1825', card: '#14233a',
-  border: 'rgba(255,255,255,0.06)', text: '#e8ecf3', textDim: '#c4cad8',
-  muted: '#8a96b0', teal: '#00E5B4', blue: '#00BFFF',
+  border: 'rgba(255,255,255,0.06)', borderStrong: 'rgba(255,255,255,0.14)',
+  text: '#e8ecf3', textDim: '#c4cad8',
+  muted: '#8a96b0', subtle: '#5a6378',
+  teal: '#00E5B4', blue: '#00BFFF',
   amber: '#FFB020', red: '#FF5470', green: '#7FE787', purple: '#8B7CF8',
 };
 const STORAGE_PREFIX = 'hatch_';
@@ -28,12 +30,28 @@ const SHOP_ITEMS = [
   { id: 'star', name: 'Star Badge', emoji: '⭐', cost: 10 },
   { id: 'cake', name: 'Birthday Cake', emoji: '🎂', cost: 12 },
 ];
-const GOAL_CATS = [
-  { value: 'health', label: '💪 Health', color: '#7FE787' },
-  { value: 'skills', label: '🛠️ Skills', color: '#00BFFF' },
-  { value: 'social', label: '🤝 Social', color: '#FF6B9D' },
-  { value: 'activity', label: '🏃 Activity', color: '#FFB020' },
-  { value: 'learning', label: '📚 Learning', color: '#8B7CF8' },
+
+// ── Goal categories — matches teen app exactly ─────────────────────────────────
+const GOAL_CATEGORIES = [
+  { id: 'emotional',   emoji: '😊', label: 'Emotional',        sub: 'Big feelings, calming down' },
+  { id: 'home_care',   emoji: '🧹', label: 'Home & self-care', sub: 'Cleaning, dishes, hygiene' },
+  { id: 'cooking',     emoji: '🍳', label: 'Cooking & food',   sub: 'Meals, kitchen, food choices' },
+  { id: 'social',      emoji: '👥', label: 'Social',           sub: 'Friends, family, conversations' },
+  { id: 'community',   emoji: '🚗', label: 'Out & about',      sub: 'Shops, transport, appointments' },
+  { id: 'school_work', emoji: '💼', label: 'School & work',    sub: 'Study, jobs, routines' },
+  { id: 'body',        emoji: '💪', label: 'Body & movement',  sub: 'Sleep, exercise, energy' },
+  { id: 'other',       emoji: '🎯', label: 'Something else',   sub: "Doesn't quite fit" },
+];
+
+const BARRIER_OPTIONS = [
+  { id: 'tired',       emoji: '😴', label: 'Feeling tired' },
+  { id: 'overwhelmed', emoji: '😰', label: 'Getting overwhelmed' },
+  { id: 'forget',      emoji: '🤔', label: 'Forgetting to do it' },
+  { id: 'unsure',      emoji: '❓', label: 'Not sure how' },
+  { id: 'support',     emoji: '🤝', label: 'Needs support nearby' },
+  { id: 'motivation',  emoji: '🔋', label: 'Low motivation' },
+  { id: 'distract',    emoji: '📱', label: 'Distractions' },
+  { id: 'steps',       emoji: '🧩', label: 'Too many steps at once' },
 ];
 
 const SUPABASE_URL = 'https://xwmvocuwjniitkwcfjkp.supabase.co';
@@ -71,7 +89,7 @@ function ago(ts) {
   return Math.floor(s/86400) + 'd ago';
 }
 
-// ── shared UI ──────────────────────────────────────────────────────────────────
+// ── Shared UI ──────────────────────────────────────────────────────────────────
 function Msg({ text, type = 'error' }) {
   if (!text) return null;
   const cols = { error: [T.red,'rgba(255,84,112,0.12)'], success: [T.teal,'rgba(0,229,180,0.12)'], info: [T.blue,'rgba(0,191,255,0.12)'] };
@@ -81,7 +99,7 @@ function Msg({ text, type = 'error' }) {
 function Overlay({ children, onClose }) {
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:T.surface, borderRadius:16, padding:24, maxWidth:480, width:'100%', border:`1px solid ${T.border}`, maxHeight:'90vh', overflowY:'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:T.surface, borderRadius:16, padding:24, maxWidth:520, width:'100%', border:`1px solid ${T.border}`, maxHeight:'92vh', overflowY:'auto' }}>
         {children}
       </div>
     </div>
@@ -250,7 +268,6 @@ function CreateUserModal({ type, onClose, onCreated }) {
       createdAt: Date.now(), createdBy: 'manager',
       petName: null, petType: null, petColor: null,
       tickets: 0, petInventory: [], assignedSWs: [],
-      // teen app fields — initialised so the teen app works on first login
       ...(type === 'teen' ? {
         hatched: false, bondLevel: 0, totalInteractions: 0,
         xp: 0, goals: [], friendPets: [], sensoryProfile: null,
@@ -331,20 +348,45 @@ function EditUserModal({ user, onClose, onSaved }) {
   );
 }
 
-// ── Create Goal (matches SW app: title + category + steps) ────────────────────
+// ── Create Goal — matches teen app flow exactly ────────────────────────────────
 function CreateGoalModal({ teens, managerUsername, onClose, onCreated }) {
-  const [teen, setTeen] = useState(teens[0]?.username || '');
-  const [title, setTitle] = useState('');
-  const [cat, setCat] = useState('skills');
-  const [steps, setSteps] = useState('');
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const [wizStep, setWizStep] = useState(0);
+  const [teen, setTeen]           = useState(teens[0]?.username || '');
+  const [category, setCategory]   = useState(null);
+  const [title, setTitle]         = useState('');
+  const [barriers, setBarriers]   = useState([]);
+  const [customBarrier, setCustomBarrier] = useState('');
+  const [goalSteps, setGoalSteps] = useState([{ id: uid(), text: '', daily: false }]);
+  const [busy, setBusy]           = useState(false);
+  const [msg, setMsg]             = useState(null);
+
+  function toggleBarrier(id) {
+    setBarriers(b => b.includes(id) ? b.filter(x => x !== id) : [...b, id]);
+  }
+  function addStep() {
+    setGoalSteps(prev => [...prev, { id: uid(), text: '', daily: false }]);
+  }
+  function removeStep(id) {
+    setGoalSteps(prev => prev.filter(s => s.id !== id));
+  }
+  function updateStep(id, field, value) {
+    setGoalSteps(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  }
 
   async function create() {
     if (!teen || !title.trim()) return;
     setBusy(true);
+    const allBarriers = [
+      ...barriers.map(id => BARRIER_OPTIONS.find(b => b.id === id)?.label).filter(Boolean),
+      ...(customBarrier.trim() ? [customBarrier.trim()] : []),
+    ];
+    const filledSteps = goalSteps
+      .filter(s => s.text.trim().length > 0)
+      .map(s => ({ id: s.id, text: s.text.trim(), done: false, daily: s.daily || undefined }));
     const goal = {
-      id: uid(), teenUsername: teen, title: title.trim(), category: cat,
-      steps: steps.split('\n').map(s => s.trim()).filter(Boolean),
+      id: uid(), teenUsername: teen, title: title.trim(), category,
+      obstacles: allBarriers,
+      steps: filledSteps.length > 0 ? filledSteps : [],
       status: 'active', createdBy: 'manager', createdByUsername: managerUsername,
       createdAt: Date.now(), activatedAt: Date.now(),
       completionRequestedAt: null, completedAt: null, notes: [],
@@ -357,66 +399,283 @@ function CreateGoalModal({ teens, managerUsername, onClose, onCreated }) {
     setTimeout(onClose, 1400);
   }
 
-  const catColor = GOAL_CATS.find(c => c.value === cat)?.color || T.teal;
-  const stepList = steps.split('\n').map(s => s.trim()).filter(Boolean);
+  const filledStepCount = goalSteps.filter(s => s.text.trim().length > 0).length;
+  const cat = GOAL_CATEGORIES.find(c => c.id === category);
+  const selectedTeen = teens.find(t => t.username === teen);
+
+  // Progress dots
+  const totalSteps = 4; // category, name, barriers, steps (+ review implied)
+  const ProgressDots = () => (
+    <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+      {Array.from({length: totalSteps}).map((_, i) => (
+        <div key={i} style={{
+          height: 4, borderRadius: 2, transition: 'all 0.3s',
+          width: i === wizStep ? 20 : 8,
+          background: i <= wizStep ? T.teal : 'rgba(255,255,255,0.1)',
+        }} />
+      ))}
+    </div>
+  );
+
+  const inputStyle = {
+    width:'100%', padding:'11px 12px', background:T.card,
+    border:`1px solid ${T.border}`, borderRadius:10,
+    color:T.text, fontFamily:'DM Sans', fontSize:13, boxSizing:'border-box',
+  };
 
   return (
     <Overlay onClose={onClose}>
-      <h2 style={{ color:T.text, fontFamily:'Syne', fontWeight:800, margin:'0 0 4px' }}>
-        Create Goal {teens.length===1 ? `for ${teens[0].petName || teens[0].username}` : ''}
-      </h2>
-      <p style={{ color:T.muted, fontSize:12, marginBottom:16 }}>Manager goals go active immediately ✅</p>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <button
+          onClick={() => wizStep > 0 ? setWizStep(wizStep - 1) : onClose()}
+          style={{ background:'none', border:'none', cursor:'pointer', color:T.text, display:'flex', alignItems:'center', padding:0 }}
+        >
+          <ChevronLeft size={20} color={T.text} />
+        </button>
+        <ProgressDots />
+        <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:T.muted }}><X size={18} /></button>
+      </div>
+
       <Msg text={msg?.text} type={msg?.type} />
 
-      {teens.length > 1 && (
-        <div style={{ marginBottom:12 }}>
-          <label style={{ color:T.textDim, fontSize:12, display:'block', marginBottom:6 }}>Teen</label>
-          <select value={teen} onChange={e => setTeen(e.target.value)} style={{ width:'100%', padding:'11px 12px', background:T.card, border:`1px solid ${T.border}`, borderRadius:10, color:T.text, fontFamily:'DM Sans', fontSize:13 }}>
+      {/* Teen selector — always visible at top if multiple teens */}
+      {teens.length > 1 && wizStep === 0 && (
+        <div style={{ marginBottom:16 }}>
+          <label style={{ color:T.textDim, fontSize:12, display:'block', marginBottom:6 }}>Creating goal for</label>
+          <select value={teen} onChange={e => setTeen(e.target.value)}
+            style={{ width:'100%', padding:'11px 12px', background:T.card, border:`1px solid ${T.border}`, borderRadius:10, color:T.text, fontFamily:'DM Sans', fontSize:13 }}>
             {teens.map(t => <option key={t.username} value={t.username}>{t.petName ? `${t.petName} (@${t.username})` : t.username}</option>)}
           </select>
         </div>
       )}
 
-      <Field label="Goal Title" value={title} onChange={setTitle} placeholder="e.g., Walk to the shops independently" disabled={busy} />
-
-      <div style={{ marginBottom:12 }}>
-        <label style={{ color:T.textDim, fontSize:12, display:'block', marginBottom:8 }}>Category</label>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {GOAL_CATS.map(c => (
-            <button key={c.value} onClick={() => setCat(c.value)} style={{
-              padding:'6px 12px', borderRadius:20,
-              border:`1px solid ${cat===c.value ? c.color : T.border}`,
-              background: cat===c.value ? `${c.color}22` : T.card,
-              color: cat===c.value ? c.color : T.muted,
-              fontFamily:'DM Sans', fontWeight:600, fontSize:12, cursor:'pointer',
-            }}>{c.label}</button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:20 }}>
-        <label style={{ color:T.textDim, fontSize:12, display:'block', marginBottom:6 }}>Steps <span style={{ color:T.muted, fontWeight:400 }}>(one per line, optional)</span></label>
-        <textarea value={steps} onChange={e => setSteps(e.target.value)}
-          placeholder={"Step 1: Get ready\nStep 2: Head out\nStep 3: Come back and check in"} disabled={busy}
-          style={{ width:'100%', padding:'11px 12px', background:T.card, border:`1px solid ${T.border}`, borderRadius:10, color:T.text, fontFamily:'DM Sans', fontSize:13, boxSizing:'border-box', resize:'vertical', minHeight:90 }} />
-        {stepList.length > 0 && (
-          <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
-            {stepList.map((s, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ width:20, height:20, borderRadius:'50%', background:`${catColor}22`, border:`1px solid ${catColor}`, display:'flex', alignItems:'center', justifyContent:'center', color:catColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{i+1}</div>
-                <span style={{ color:T.textDim, fontSize:12 }}>{s}</span>
-              </div>
-            ))}
+      {/* ── Step 0: Category ──────────────────────────────────────────── */}
+      {wizStep === 0 && (
+        <>
+          <h2 style={{ fontFamily:'Syne', fontWeight:800, fontSize:20, color:T.text, marginBottom:6 }}>What kind of goal is this?</h2>
+          <p style={{ color:T.muted, fontSize:13, marginBottom:16, fontFamily:'DM Sans' }}>
+            Pick the best fit for {selectedTeen?.petName || selectedTeen?.username || 'this teen'}.
+          </p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
+            {GOAL_CATEGORIES.map(c => {
+              const active = category === c.id;
+              return (
+                <button key={c.id} onClick={() => setCategory(active ? null : c.id)} style={{
+                  background: active ? `${T.teal}1f` : T.card,
+                  border: active ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`,
+                  borderRadius:12, padding:'12px 10px', cursor:'pointer',
+                  textAlign:'left', display:'flex', flexDirection:'column', gap:4,
+                  transition:'all 0.15s', minHeight:72,
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:20 }}>{c.emoji}</span>
+                    <span style={{ fontSize:12, fontWeight:700, fontFamily:'DM Sans', color: active ? T.teal : T.text }}>{c.label}</span>
+                  </div>
+                  <span style={{ fontSize:10, fontFamily:'DM Sans', color:T.muted, lineHeight:1.3 }}>{c.sub}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
-      </div>
+          <div style={{ display:'flex', gap:8 }}>
+            {category && (
+              <Btn onClick={() => setCategory(null)} color={T.card} fg={T.muted} style={{ border:`1px solid ${T.border}` }} sm>Skip category</Btn>
+            )}
+            <Btn onClick={() => setWizStep(1)} style={{ flex:1, justifyContent:'center' }}>Next →</Btn>
+          </div>
+        </>
+      )}
 
-      <div style={{ display:'flex', gap:8 }}>
-        <Btn onClick={onClose} color={T.card} fg={T.text} style={{ flex:1, justifyContent:'center', border:`1px solid ${T.border}` }}>Cancel</Btn>
-        <Btn onClick={create} disabled={!teen || !title.trim() || busy} style={{ flex:1, justifyContent:'center' }}>
-          {busy ? '⏳' : '+ Create Goal'}
-        </Btn>
-      </div>
+      {/* ── Step 1: Goal name ────────────────────────────────────────── */}
+      {wizStep === 1 && (
+        <>
+          <h2 style={{ fontFamily:'Syne', fontWeight:800, fontSize:20, color:T.text, marginBottom:6 }}>Name the goal</h2>
+          {cat && (
+            <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:`${T.teal}18`, border:`1px solid ${T.teal}40`, borderRadius:20, padding:'4px 12px', marginBottom:12 }}>
+              <span style={{ fontSize:14 }}>{cat.emoji}</span>
+              <span style={{ color:T.teal, fontSize:12, fontWeight:700, fontFamily:'DM Sans' }}>{cat.label}</span>
+            </div>
+          )}
+          <p style={{ color:T.muted, fontSize:13, marginBottom:14, fontFamily:'DM Sans' }}>
+            Short and clear — something {selectedTeen?.petName || 'the teen'} can picture doing.
+          </p>
+          <textarea
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="e.g. Empty the dishwasher, Go to the shops alone, Manage anger calmly..."
+            rows={3}
+            style={{ ...inputStyle, resize:'none', marginBottom:14 }}
+          />
+          <div style={{ background:T.card, borderRadius:10, padding:'12px 14px', marginBottom:20, border:`1px solid ${T.border}` }}>
+            <div style={{ fontSize:11, color:T.muted, fontFamily:'DM Sans', fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>💡 Good goal names are...</div>
+            <div style={{ fontSize:12, color:T.muted, fontFamily:'DM Sans', lineHeight:1.8 }}>
+              ✅ Clear — you know when it's been done<br />
+              ✅ Theirs — something that matters to them<br />
+              ✅ Doable — challenging but possible
+            </div>
+          </div>
+          <Btn
+            onClick={() => setWizStep(2)}
+            disabled={title.trim().length < 3}
+            style={{ width:'100%', justifyContent:'center', opacity: title.trim().length < 3 ? 0.4 : 1 }}
+          >
+            Next →
+          </Btn>
+        </>
+      )}
+
+      {/* ── Step 2: Barriers ─────────────────────────────────────────── */}
+      {wizStep === 2 && (
+        <>
+          <h2 style={{ fontFamily:'Syne', fontWeight:800, fontSize:20, color:T.text, marginBottom:6 }}>What could make this harder?</h2>
+          <p style={{ color:T.muted, fontSize:13, marginBottom:14, fontFamily:'DM Sans' }}>
+            Knowing ahead of time means you can plan around it. Tap anything that might apply.
+          </p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+            {BARRIER_OPTIONS.map(b => {
+              const active = barriers.includes(b.id);
+              return (
+                <button key={b.id} onClick={() => toggleBarrier(b.id)} style={{
+                  background: active ? `${T.amber}22` : T.card,
+                  border: active ? `1.5px solid ${T.amber}` : `1px solid ${T.border}`,
+                  borderRadius:12, padding:'10px 10px',
+                  color: active ? T.amber : T.textDim,
+                  fontSize:12, fontWeight:500, fontFamily:'DM Sans',
+                  textAlign:'left', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:8, transition:'all 0.15s',
+                }}>
+                  <span style={{ fontSize:15 }}>{b.emoji}</span>
+                  <span>{b.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <input
+            value={customBarrier}
+            onChange={e => setCustomBarrier(e.target.value)}
+            placeholder="Something else? Add it here..."
+            style={{ ...inputStyle, marginBottom:20 }}
+          />
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn onClick={() => setWizStep(3)} color={T.card} fg={T.muted} style={{ border:`1px solid ${T.border}` }}>Skip</Btn>
+            <Btn onClick={() => setWizStep(3)} style={{ flex:1, justifyContent:'center' }}>Next →</Btn>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 3: Baby steps ───────────────────────────────────────── */}
+      {wizStep === 3 && (
+        <>
+          <h2 style={{ fontFamily:'Syne', fontWeight:800, fontSize:20, color:T.text, marginBottom:6 }}>Baby steps</h2>
+          <p style={{ color:T.muted, fontSize:13, marginBottom:12, fontFamily:'DM Sans' }}>
+            Break "{title}" into small steps. Mark each one daily or once-off.
+          </p>
+
+          {/* Legend */}
+          <div style={{ display:'flex', gap:16, marginBottom:14 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'DM Sans', color:T.teal }}>
+              <div style={{ width:10, height:10, borderRadius:3, background:T.teal }} />Daily habit
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'DM Sans', color:T.purple }}>
+              <div style={{ width:10, height:10, borderRadius:3, background:T.purple }} />Once-off
+            </div>
+          </div>
+
+          {goalSteps.map((s, i) => (
+            <div key={s.id} style={{
+              background: T.card,
+              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
+              borderRadius:12, border:`1px solid ${T.border}`,
+              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
+              padding:'12px', marginBottom:10,
+            }}>
+              <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:10 }}>
+                <div style={{
+                  width:22, height:22, borderRadius:'50%', background:T.surface,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:11, color:T.muted, fontFamily:'DM Sans', fontWeight:600, flexShrink:0,
+                }}>{i+1}</div>
+                <input
+                  value={s.text}
+                  onChange={e => updateStep(s.id, 'text', e.target.value)}
+                  placeholder="What's this step?"
+                  style={{ flex:1, padding:'7px 10px', background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, color:T.text, fontFamily:'DM Sans', fontSize:13, outline:'none' }}
+                />
+                {goalSteps.length > 1 && (
+                  <button onClick={() => removeStep(s.id)} style={{ background:'none', border:'none', cursor:'pointer', color:T.subtle, padding:2, flexShrink:0 }}>
+                    <X size={14} color={T.subtle} />
+                  </button>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:7 }}>
+                {[
+                  { isDaily: true,  label:'🔄 Daily habit', color: T.teal },
+                  { isDaily: false, label:'✅ Once-off',    color: T.purple },
+                ].map(opt => (
+                  <button key={String(opt.isDaily)} onClick={() => updateStep(s.id, 'daily', opt.isDaily)} style={{
+                    flex:1, padding:'8px 6px', borderRadius:8,
+                    border:`1.5px solid ${s.daily === opt.isDaily ? opt.color : T.border}`,
+                    background: s.daily === opt.isDaily ? `${opt.color}1a` : T.surface,
+                    color: s.daily === opt.isDaily ? opt.color : T.muted,
+                    fontSize:12, fontWeight:600, fontFamily:'DM Sans', cursor:'pointer',
+                    transition:'all 0.15s',
+                  }}>{opt.label}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <button onClick={addStep} style={{
+            width:'100%', padding:'11px', background:'transparent',
+            border:`1.5px dashed ${T.borderStrong}`, borderRadius:12,
+            color:T.muted, fontSize:13, fontFamily:'DM Sans', cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:20,
+          }}>
+            <Plus size={15} color={T.muted} /> Add a step
+          </button>
+
+          {/* Review summary before creating */}
+          <div style={{ background:T.card, borderRadius:12, padding:14, marginBottom:20, border:`1px solid ${T.border}` }}>
+            <div style={{ fontSize:11, color:T.muted, fontFamily:'DM Sans', fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Goal summary</div>
+            <div style={{ color:T.text, fontSize:15, fontWeight:700, fontFamily:'DM Sans', marginBottom:6 }}>{title}</div>
+            {cat && (
+              <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:`${T.teal}15`, borderRadius:20, padding:'3px 10px', marginBottom:8 }}>
+                <span style={{ fontSize:12 }}>{cat.emoji}</span>
+                <span style={{ color:T.teal, fontSize:11, fontWeight:700, fontFamily:'DM Sans' }}>{cat.label}</span>
+              </div>
+            )}
+            {(barriers.length > 0 || customBarrier.trim()) && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+                {[...barriers.map(id => BARRIER_OPTIONS.find(b => b.id === id)?.label).filter(Boolean), ...(customBarrier.trim() ? [customBarrier.trim()] : [])].map((b, i) => (
+                  <span key={i} style={{ background:`${T.amber}18`, color:T.amber, fontSize:11, padding:'3px 8px', borderRadius:10, fontFamily:'DM Sans' }}>{b}</span>
+                ))}
+              </div>
+            )}
+            {filledStepCount > 0 && (
+              <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:4 }}>
+                {goalSteps.filter(s => s.text.trim()).map((s, i) => (
+                  <div key={s.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ width:18, height:18, borderRadius:'50%', background:T.surface, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, color:T.muted, fontWeight:700, fontFamily:'DM Sans', flexShrink:0 }}>{i+1}</div>
+                    <span style={{ flex:1, fontSize:12, color:T.textDim, fontFamily:'DM Sans' }}>{s.text}</span>
+                    <span style={{
+                      fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:8, fontFamily:'DM Sans',
+                      background: s.daily ? `${T.teal}18` : `${T.purple}18`,
+                      color: s.daily ? T.teal : T.purple,
+                    }}>{s.daily ? 'Daily' : 'Once-off'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn onClick={() => setWizStep(2)} color={T.card} fg={T.muted} style={{ border:`1px solid ${T.border}` }}><ChevronLeft size={14} /></Btn>
+            <Btn onClick={create} disabled={!teen || !title.trim() || busy} style={{ flex:1, justifyContent:'center' }}>
+              {busy ? '⏳' : '🎉 Create Goal'}
+            </Btn>
+          </div>
+        </>
+      )}
     </Overlay>
   );
 }
@@ -434,7 +693,7 @@ function GoalDetailModal({ goal, managerUsername, onClose, onUpdated }) {
     rejected:           { label:'❌ Rejected',           color:T.red },
   };
   const sm = SM[goal.status] || { label:goal.status, color:T.muted };
-  const catMeta = GOAL_CATS.find(c => c.value === goal.category);
+  const cat = GOAL_CATEGORIES.find(c => c.id === goal.category);
 
   async function addNote() {
     if (!note.trim()) return; setBusy(true);
@@ -474,6 +733,11 @@ function GoalDetailModal({ goal, managerUsername, onClose, onUpdated }) {
     setTimeout(onClose, 2000);
   }
 
+  // Normalise steps — handle both old string format and new object format
+  const normalisedSteps = (goal.steps || []).map(s =>
+    typeof s === 'string' ? { id: uid(), text: s, done: false } : s
+  );
+
   return (
     <Overlay onClose={onClose}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
@@ -481,20 +745,47 @@ function GoalDetailModal({ goal, managerUsername, onClose, onUpdated }) {
           <h2 style={{ color:T.text, fontFamily:'Syne', fontWeight:800, margin:'0 0 8px', fontSize:18 }}>{goal.title}</h2>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
             <span style={{ background:`${sm.color}22`, color:sm.color, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700 }}>{sm.label}</span>
-            {catMeta && <span style={{ background:`${catMeta.color}22`, color:catMeta.color, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700 }}>{catMeta.label}</span>}
+            {cat && <span style={{ background:`${T.teal}15`, color:T.teal, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700 }}>{cat.emoji} {cat.label}</span>}
           </div>
         </div>
         <button onClick={onClose} style={{ background:'none', border:'none', color:T.muted, cursor:'pointer' }}><X size={18} /></button>
       </div>
       <div style={{ color:T.muted, fontSize:11, marginBottom:16 }}>Teen: @{goal.teenUsername} · By: @{goal.createdByUsername} · {ago(goal.createdAt)}</div>
 
-      {goal.steps?.length > 0 && (
+      {/* Barriers */}
+      {goal.obstacles?.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ color:T.muted, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Might make this harder</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {goal.obstacles.map((o, i) => (
+              <span key={i} style={{ background:`${T.amber}18`, color:T.amber, fontSize:11, padding:'4px 10px', borderRadius:10, fontFamily:'DM Sans' }}>{o}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Steps with daily/once-off badges */}
+      {normalisedSteps.length > 0 && (
         <div style={{ background:T.card, borderRadius:10, padding:12, marginBottom:16 }}>
-          <div style={{ color:T.textDim, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Steps</div>
-          {goal.steps.map((s, i) => (
-            <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:6 }}>
-              <div style={{ width:20, height:20, borderRadius:'50%', background:`${T.teal}22`, border:`1px solid ${T.teal}`, display:'flex', alignItems:'center', justifyContent:'center', color:T.teal, fontSize:10, fontWeight:700, flexShrink:0, marginTop:1 }}>{i+1}</div>
-              <span style={{ color:T.textDim, fontSize:13 }}>{s}</span>
+          <div style={{ color:T.textDim, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Baby steps</div>
+          {normalisedSteps.map((s, i) => (
+            <div key={s.id || i} style={{
+              display:'flex', alignItems:'center', gap:8, marginBottom:8,
+              background:T.surface, borderRadius:8, padding:'9px 10px',
+              borderLeft:`3px solid ${s.daily ? T.teal : T.purple}`,
+            }}>
+              <div style={{
+                width:20, height:20, borderRadius:'50%', background:T.card,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:10, color:T.muted, fontWeight:700, fontFamily:'DM Sans', flexShrink:0,
+              }}>{i+1}</div>
+              <span style={{ flex:1, color:T.textDim, fontSize:13, fontFamily:'DM Sans' }}>{s.text}</span>
+              {s.done && <span style={{ color:T.teal, fontSize:13 }}>✅</span>}
+              <span style={{
+                fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:8, fontFamily:'DM Sans', whiteSpace:'nowrap',
+                background: s.daily ? `${T.teal}18` : `${T.purple}18`,
+                color: s.daily ? T.teal : T.purple,
+              }}>{s.daily ? 'Daily' : 'Once-off'}</span>
             </div>
           ))}
         </div>
@@ -590,7 +881,6 @@ function UserCard({ u, sws, showAssign, onEdit, onDelete, onViewGoals, goalCount
   const [confirmDel, setConfirmDel] = useState(false);
   const [addingSW, setAddingSW] = useState(false);
   const animal = ANIMALS.find(a => a.id === u.petType);
-  // support legacy single assignedSW field
   const assignedSWs = u.assignedSWs || (u.assignedSW ? [u.assignedSW] : []);
   const assignedSWObjs = assignedSWs.map(un => sws.find(s => s.username === un)).filter(Boolean);
   const unassignedSWs = sws.filter(s => !assignedSWs.includes(s.username));
@@ -614,7 +904,6 @@ function UserCard({ u, sws, showAssign, onEdit, onDelete, onViewGoals, goalCount
         </div>
       </div>
 
-      {/* SW assignment (teens only) — supports multiple */}
       {showAssign && (
         <div style={{ marginBottom:10 }}>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: (addingSW || unassignedSWs.length > 0) ? 6 : 0 }}>
@@ -704,22 +993,33 @@ function TeenGoalsPanel({ teen, managerUsername, onBack, onGoalUpdated }) {
   const SM_COLOR = { pending:T.amber, active:T.teal, pending_completion:T.blue, completed:T.green, rejected:T.red };
   const SM_ICON  = { pending:'⏳', active:'✅', pending_completion:'🔔', completed:'🏆', rejected:'❌' };
 
-  const GoalRow = ({ goal }) => (
-    <div onClick={() => setSelectedGoal(goal)} style={{
-      background:T.surface, border:`1px solid ${goal.status==='pending_completion' ? T.blue : T.border}`,
-      borderRadius:10, padding:'12px 14px', cursor:'pointer',
-      display:'flex', justifyContent:'space-between', alignItems:'center',
-    }}>
-      <div>
-        <div style={{ color:T.text, fontSize:13, fontWeight:600, marginBottom:3 }}>{SM_ICON[goal.status]} {goal.title}</div>
-        <div style={{ color:T.muted, fontSize:11 }}>@{goal.createdByUsername} · {goal.notes?.length||0} notes · {ago(goal.createdAt)}</div>
+  const GoalRow = ({ goal }) => {
+    const cat = GOAL_CATEGORIES.find(c => c.id === goal.category);
+    const stepCount = (goal.steps || []).length;
+    const doneCount = (goal.steps || []).filter(s => typeof s === 'object' && s.done).length;
+    return (
+      <div onClick={() => setSelectedGoal(goal)} style={{
+        background:T.surface, border:`1px solid ${goal.status==='pending_completion' ? T.blue : T.border}`,
+        borderRadius:10, padding:'12px 14px', cursor:'pointer',
+        display:'flex', justifyContent:'space-between', alignItems:'center',
+      }}>
+        <div>
+          <div style={{ color:T.text, fontSize:13, fontWeight:600, marginBottom:3 }}>
+            {SM_ICON[goal.status]} {goal.title}
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {cat && <span style={{ color:T.teal, fontSize:11 }}>{cat.emoji} {cat.label}</span>}
+            {stepCount > 0 && <span style={{ color:T.muted, fontSize:11 }}>{doneCount}/{stepCount} steps</span>}
+            <span style={{ color:T.muted, fontSize:11 }}>{ago(goal.createdAt)}</span>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+          <span style={{ color:SM_COLOR[goal.status], fontSize:10, fontWeight:700 }}>{goal.status.replace('_',' ')}</span>
+          <ChevronRight size={14} color={T.muted} />
+        </div>
       </div>
-      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-        <span style={{ color:SM_COLOR[goal.status], fontSize:10, fontWeight:700 }}>{goal.status.replace('_',' ')}</span>
-        <ChevronRight size={14} color={T.muted} />
-      </div>
-    </div>
-  );
+    );
+  };
 
   const Section = ({ title, items, color }) => items.length===0 ? null : (
     <div style={{ marginBottom:16 }}>
@@ -829,7 +1129,6 @@ function Dashboard({ user: init, onLogout }) {
   return (
     <div style={{ minHeight:'100vh', background:T.bg, padding:20 }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
-        {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <div style={{ fontSize:48, background:T.surface, borderRadius:14, width:60, height:60, display:'flex', alignItems:'center', justifyContent:'center', border:`1px solid ${T.border}` }}>
@@ -847,7 +1146,6 @@ function Dashboard({ user: init, onLogout }) {
           </div>
         </div>
 
-        {/* Stats */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
           {[
             { label:'Teens', value:teens.length, color:T.teal, icon:'👥' },
@@ -863,7 +1161,6 @@ function Dashboard({ user: init, onLogout }) {
           ))}
         </div>
 
-        {/* Tabs */}
         <div style={{ display:'flex', gap:6, marginBottom:20 }}>
           {[
             { key:'teens', label:'Teens', icon:<Users size={15}/>, count:teens.length },
@@ -878,7 +1175,6 @@ function Dashboard({ user: init, onLogout }) {
           ))}
         </div>
 
-        {/* List */}
         <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <h3 style={{ color:T.text, fontFamily:'Syne', fontWeight:700, fontSize:16, margin:0 }}>
@@ -897,17 +1193,9 @@ function Dashboard({ user: init, onLogout }) {
           ) : (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12 }}>
               {(tab==='teens' ? teens : sws).map(u => (
-                <UserCard
-                  key={u.username}
-                  u={u}
-                  sws={sws}
-                  showAssign={tab === 'teens'}
-                  onEdit={setEditUser}
-                  onDelete={deleteUser}
-                  onViewGoals={setViewTeen}
-                  goalCount={goalCounts[u.username]||0}
-                  onAssignSW={assignSW}
-                />
+                <UserCard key={u.username} u={u} sws={sws} showAssign={tab==='teens'}
+                  onEdit={setEditUser} onDelete={deleteUser} onViewGoals={setViewTeen}
+                  goalCount={goalCounts[u.username]||0} onAssignSW={assignSW} />
               ))}
             </div>
           )}
