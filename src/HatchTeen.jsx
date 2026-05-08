@@ -1,4 +1,3 @@
-import React from "react";
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react";
 import {
   Plus, ChevronLeft, Check, X, Heart, Sparkles, Cookie, Gamepad2,
@@ -542,18 +541,30 @@ function getPersonalizedObstacles(user) {
 // ────────────────────────────────────────────────────────────────────────────
 // STORAGE
 // ────────────────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://xwmvocuwjniitkwcfjkp.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bXZvY3V3am5paXRrd2NmamtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDA3NDMsImV4cCI6MjA5MzcxNjc0M30.7957DOcu_yKxo9ot-TZOo5MNHfbgQYiv4WMLf17Bj2Y';
+const SB_HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+
 async function storageGet(key) {
   try {
-    const r = await window.storage.get(STORAGE_PREFIX + key);
-    if (!r) return null;
-    return JSON.parse(r.value);
-  } catch { return null; }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/hatch_data?key=eq.${encodeURIComponent(STORAGE_PREFIX + key)}&select=value`, { headers: SB_HEADERS });
+    const rows = await res.json();
+    return rows.length > 0 ? rows[0].value : null;
+  } catch (e) {
+    try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + key)); } catch (e2) { return null; }
+  }
 }
 async function storageSet(key, value) {
   try {
-    await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(value));
+    await fetch(`${SUPABASE_URL}/rest/v1/hatch_data`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ key: STORAGE_PREFIX + key, value: value }),
+    });
     return true;
-  } catch { return false; }
+  } catch (e) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); return true; } catch (e2) { return false; }
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -5374,45 +5385,31 @@ const iconBtnLg = {
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
-  const [mode, setMode] = useState('login');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function go() {
     setErr('');
-    if (!username.trim()) return setErr('Pick a username');
+    if (!username.trim()) return setErr('Enter your username');
     if (pin.length !== 4) return setErr('PIN must be 4 digits');
     setBusy(true);
     const key = 'user:' + username.toLowerCase().trim();
     const existing = await storageGet(key);
-    if (mode === 'login') {
-      if (!existing) { setErr("That username doesn't exist yet — try Sign Up"); setBusy(false); return; }
-      if (existing.pin !== pin) { setErr("PIN doesn't match"); setBusy(false); return; }
-      onLogin(existing);
-    } else {
-      if (existing) { setErr('Username already taken'); setBusy(false); return; }
-      const newUser = {
-        username: username.toLowerCase().trim(),
-        pin,
-        petType: null,
-        petName: null,
-        petColor: T.teal,
-        hatched: false,
-        tickets: 0,
-        bondLevel: 0,
-        totalInteractions: 0,
-        xp: 0,
-        goals: [],
-        friendPets: [],
-        sensoryProfile: null,
-        soundOn: true,
-        activePetGoal: null,
-        petGoalHistory: [],
-        createdAt: Date.now(),
-      };
-      await storageSet(key, newUser);
-      onLogin(newUser);
+    if (!existing) { setErr("Username not found — ask your manager to set up your account"); setBusy(false); return; }
+    if (!existing.pin) { setErr("No PIN set — ask your manager to set one for you"); setBusy(false); return; }
+    if (existing.pin !== pin) { setErr("Incorrect PIN"); setBusy(false); return; }
+    // make sure all teen fields exist (in case account was created by manager)
+    const full = {
+      petType: null, petName: null, petColor: existing.petColor || T.teal,
+      hatched: false, tickets: 0, bondLevel: 0, totalInteractions: 0,
+      xp: 0, goals: [], friendPets: [], sensoryProfile: null,
+      soundOn: true, activePetGoal: null, petGoalHistory: [],
+      ...existing,
+    };
+    if (JSON.stringify(full) !== JSON.stringify(existing)) {
+      await storageSet(key, full);
     }
+    onLogin(full);
     setBusy(false);
   }
 
@@ -5426,16 +5423,13 @@ function LoginScreen({ onLogin }) {
         Work on your goals. Earn time with your pet.
       </p>
       <div style={{ width: '100%', maxWidth: 340 }}>
-        <div style={{ display: 'flex', background: T.surface, borderRadius: 12, padding: 4, marginBottom: 16, border: `1px solid ${T.border}` }}>
-          <button onClick={() => setMode('login')} style={tabBtn(mode === 'login')}>Log in</button>
-          <button onClick={() => setMode('signup')} style={tabBtn(mode === 'signup')}>Sign up</button>
-        </div>
         <input value={username} onChange={e => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} placeholder="Username" maxLength={20} style={inputStyle} />
         <input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="4-digit PIN" inputMode="numeric"
+          onKeyPress={e => e.key === 'Enter' && go()}
           style={{ ...inputStyle, letterSpacing: pin ? 8 : 'normal', textAlign: pin ? 'center' : 'left' }} type="password" />
         {err && <div style={{ color: T.red, fontSize: 13, marginBottom: 12, fontFamily: 'DM Sans' }}>{err}</div>}
         <button onClick={go} disabled={busy} style={primaryBtn}>
-          {busy ? '...' : (mode === 'login' ? 'Continue' : 'Create account')}
+          {busy ? '...' : 'Log in'}
         </button>
       </div>
       <Style />
@@ -9908,6 +9902,18 @@ function ColorPickerModal({ item, initialColor, mode, petType, petColor, petVari
 // ────────────────────────────────────────────────────────────────────────────
 const LEARN_MODULES = [
   {
+    id: 'shopping',
+    title: 'Pet Goes Shopping',
+    emoji: '🛒',
+    tagline: 'Navigate the supermarket, manage overwhelm, stay calm',
+    color: '#FF6B9D',
+    relatedCategories: ['community', 'home_care'],
+    relatedLabel: 'Helps with community outings & daily living',
+    activities: [
+      { id: 'shopping_run', title: 'Shopping Run', emoji: '🛒', color: '#FF6B9D', desc: 'Guide your pet through the supermarket without getting overwhelmed' },
+    ],
+  },
+  {
     id: 'clock',
     title: 'Pet Learns Time',
     emoji: '🕐',
@@ -10386,6 +10392,2701 @@ function ClockGame_Build({ petEmoji, onFinish }) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// SHOPPING GAME COMPONENTS
+// ════════════════════════════════════════════════════════════════════════════
+const PETS = [
+  { id: 'dragon', name: 'Dragon', emoji: '🐉' },
+  { id: 'cat', name: 'Cat', emoji: '🐱' },
+  { id: 'fox', name: 'Fox', emoji: '🦊' },
+  { id: 'bunny', name: 'Bunny', emoji: '🐰' },
+  { id: 'octopus', name: 'Octopus', emoji: '🐙' },
+  { id: 'bird', name: 'Bird', emoji: '🦜' },
+];
+
+const ENCOUNTERS_DATA = [
+  {
+    id: 'lights', type: 'regulation',
+    title: 'Buzzing fluorescent lights',
+    desc: 'The fluorescent lights above this aisle are flickering and buzzing. Your eyes feel weird and your head is starting to pound.',
+    choices: [
+      { text: 'Look down at the floor for a bit', delta: -1, explanation: 'Reducing input helps reset.' },
+      { text: 'Keep moving through quickly', delta: 0, explanation: 'You get through it.' },
+      { text: 'Freeze and stare at them', delta: 1, explanation: 'Staring makes it worse.' },
+    ],
+  },
+  {
+    id: 'crowd', type: 'escalation',
+    title: 'Aisle blocked by trolleys',
+    desc: '"Excuse me... sorry... just getting past..." Two shoppers have stopped to chat, trolleys side by side, completely blocking the aisle.',
+    choices: [
+      { text: 'Politely say "excuse me"', delta: -1, explanation: 'Direct and calm works.' },
+      { text: 'Wait patiently for a gap', delta: 0, explanation: 'A bit slow, but okay.' },
+      { text: 'Huff and push through anyway', delta: 1, explanation: 'Creates more tension.' },
+    ],
+  },
+  {
+    id: 'announcement', type: 'regulation',
+    title: 'Loud store announcement',
+    desc: '"🔔 ATTENTION HATCH MART SHOPPERS — today only, buy two get one FREE on all—" The volume is full blast right above you.',
+    choices: [
+      { text: 'Cup your ears with your hands', delta: -1, explanation: 'Protecting your senses is smart.' },
+      { text: 'Breathe slowly until it ends', delta: -1, explanation: 'Riding it out calmly.' },
+      { text: 'Panic and look for the exit', delta: 1, explanation: 'Panic makes it harder.' },
+    ],
+  },
+  {
+    id: 'bump', type: 'social',
+    title: 'Someone bumps into you',
+    desc: 'A distracted shopper walks straight into you, nearly knocking your shopping. They look up, surprised.',
+    choices: [
+      { text: '"No worries, happens to everyone"', delta: -1, explanation: 'Accidents happen — kindness helps.' },
+      { text: 'Nod and move on', delta: 0, explanation: 'Neutral and fine.' },
+      { text: 'Get frustrated and snap at them', delta: 2, explanation: 'Your story about it = more stress.' },
+    ],
+  },
+  {
+    id: 'crying_baby', type: 'regulation',
+    title: 'Screaming baby nearby',
+    desc: '"WAAAAAH!" A baby in a shopping trolley two rows over is SCREAMING. The mum looks exhausted and stressed.',
+    choices: [
+      { text: 'Put distance between you and the sound', delta: -1, explanation: 'Moving away reduces the input.' },
+      { text: 'Notice it and keep going', delta: 0, explanation: 'Acknowledging without reacting.' },
+      { text: 'Let the noise take over your thoughts', delta: 1, explanation: 'Focusing on it amplifies it.' },
+    ],
+  },
+  {
+    id: 'strong_smell', type: 'regulation',
+    title: 'Overwhelming smell',
+    desc: 'A wave of strong cleaning product smell hits as a worker mops nearby. Your stomach turns and your eyes water a little.',
+    choices: [
+      { text: 'Breathe through your mouth briefly', delta: -1, explanation: 'Reduces smell input.' },
+      { text: 'Keep walking past quickly', delta: 0, explanation: 'You get through it.' },
+      { text: 'Stop and focus on how bad it is', delta: 1, explanation: 'Dwelling on it makes it stronger.' },
+    ],
+  },
+  {
+    id: 'close_person', type: 'social',
+    title: 'Someone standing too close',
+    desc: 'An elderly shopper is squinting at price tags RIGHT next to you — way inside your personal space. They haven\'t noticed.',
+    choices: [
+      { text: 'Take a small step sideways', delta: -1, explanation: 'Creating space calmly.' },
+      { text: 'Stand your ground and wait', delta: 0, explanation: 'Manageable with awareness.' },
+      { text: 'Feel trapped and start spiralling', delta: 1, explanation: 'Thoughts spiral = more stress.' },
+    ],
+  },
+  {
+    id: 'loud_phone', type: 'regulation',
+    title: 'Speakerphone in the aisle',
+    desc: '"YEAH MATE I\'M AT THE SHOPS, WHAT DO YOU WANT FOR DINNER??" A man is on full speakerphone in the cereal aisle. LOUD.',
+    choices: [
+      { text: 'Move to the next aisle over', delta: -1, explanation: 'Removing yourself from a stressor.' },
+      { text: 'Focus on your own list and tune it out', delta: 0, explanation: 'Concentration helps.' },
+      { text: 'Stare at him and get annoyed', delta: 1, explanation: 'Conflict focus = more stress.' },
+    ],
+  },
+];
+
+// Pool of stress NPC characters — randomised per playthrough so encounters vary
+const STRESS_NPC_POOL = [
+  { id: 'stocker',     encId: 'lights',       look: { hair: '#3a2611', shirt: '#0077b6', skin: '#e9c39d', accessory: 'ladder' } },
+  { id: 'busy_mum',   encId: 'crowd',        look: { hair: '#7a4f1d', shirt: '#e76f51', skin: '#e9c39d', accessory: 'trolley' } },
+  { id: 'manager',    encId: 'announcement', look: { hair: '#1d1d1d', shirt: '#1d3557', skin: '#c89b7b', accessory: 'mic' } },
+  { id: 'phone_man',  encId: 'loud_phone',   look: { hair: '#3a2611', shirt: '#9d4edd', skin: '#a87850', accessory: 'phone' } },
+  { id: 'baby_mum',   encId: 'crying_baby',  look: { hair: '#c97b3c', shirt: '#e9c46a', skin: '#e9c39d', accessory: 'trolley' } },
+  { id: 'old_shopper',encId: 'close_person', look: { hair: '#d0d0d0', shirt: '#588157', skin: '#c89b7b', accessory: null } },
+  { id: 'phone_teen', encId: 'bump',         look: { hair: '#5a3a2a', shirt: '#588157', skin: '#e9c39d', accessory: 'phone' } },
+  { id: 'cleaner',    encId: 'strong_smell', look: { hair: '#1d1d1d', shirt: '#ade8f4', skin: '#c89b7b', accessory: 'mop' } },
+];
+
+// NPC positions for stress encounters — chokepoints on all three corridors
+const STRESS_POSITIONS = [
+  { x: 3, y: 2 },  // front aisle right of start
+  { x: 1, y: 4 },  // left corridor chokepoint
+  { x: 4, y: 4 },  // middle corridor chokepoint
+  { x: 8, y: 5 },  // right corridor chokepoint
+  { x: 4, y: 6 },  // back aisle middle
+];
+
+function buildNpcs(isHard) {
+  // Shuffle the stress NPC pool and pick how many we need
+  const stressCount = isHard ? 4 : 2;
+  const shuffled = [...STRESS_NPC_POOL].sort(() => Math.random() - 0.5);
+  const chosen = shuffled.slice(0, stressCount);
+  const stressNpcs = chosen.map((npc, i) => ({
+    ...npc,
+    kind: 'stress',
+    x: STRESS_POSITIONS[i].x,
+    y: STRESS_POSITIONS[i].y,
+  }));
+
+  // Helper workers — one near the front, one near the back (hard mode only)
+  const helpers = [
+    {
+      id: 'helper_front', kind: 'helper', x: 1, y: 2,
+      look: { hair: '#5a3a2a', shirt: '#06a77d', skin: '#e9c39d', accessory: 'apron' },
+    },
+  ];
+  if (isHard) {
+    helpers.push({
+      id: 'helper_back', kind: 'helper', x: 7, y: 6,
+      look: { hair: '#3a2611', shirt: '#06a77d', skin: '#c89b7b', accessory: 'apron' },
+    });
+  }
+
+  return [...helpers, ...stressNpcs];
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIO PLAYER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function useAmbientAudio() {
+  // Persistent audio state stored in a ref so re-renders don't reset it
+  const S = useRef({
+    ctx: null, masterGain: null,
+    ambientNodes: [], timers: [],
+    ambientRunning: false, volume: 0.25,
+  });
+
+  const getCtx = () => {
+    if (!S.current.ctx) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const master = ctx.createGain();
+      master.gain.value = S.current.volume;
+      master.connect(ctx.destination);
+      S.current.ctx = ctx;
+      S.current.masterGain = master;
+    }
+    if (S.current.ctx.state === 'suspended') S.current.ctx.resume();
+    return S.current.ctx;
+  };
+
+  // Smooth volume change — called from outside when teen adjusts the slider
+  const setVolume = (v) => {
+    S.current.volume = v;
+    if (S.current.masterGain) {
+      S.current.masterGain.gain.setTargetAtTime(v, S.current.ctx.currentTime, 0.3);
+    }
+  };
+
+  const startAmbient = () => {
+    if (S.current.ambientRunning) return;
+    S.current.ambientRunning = true;
+    const ctx = getCtx();
+    const master = S.current.masterGain;
+
+    // ── CROWD MURMUR ──────────────────────────────────────────────────────────
+    // White noise → bandpass filter at speech frequencies → gentle gain
+    const bufLen = ctx.sampleRate * 4;
+    const noiseBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) nd[i] = Math.random() * 2 - 1;
+    const noiseNode = ctx.createBufferSource();
+    noiseNode.buffer = noiseBuf;
+    noiseNode.loop = true;
+    const murmurFilter = ctx.createBiquadFilter();
+    murmurFilter.type = 'bandpass';
+    murmurFilter.frequency.value = 380;
+    murmurFilter.Q.value = 0.6;
+    const murmurGain = ctx.createGain();
+    murmurGain.gain.value = 0.14;
+    noiseNode.connect(murmurFilter);
+    murmurFilter.connect(murmurGain);
+    murmurGain.connect(master);
+    noiseNode.start();
+    S.current.ambientNodes.push(noiseNode);
+
+    // ── VENTILATION / REFRIGERATION HUM ─────────────────────────────────────
+    const humOsc = ctx.createOscillator();
+    const humGain = ctx.createGain();
+    humOsc.type = 'sine';
+    humOsc.frequency.value = 53;
+    humGain.gain.value = 0.05;
+    humOsc.connect(humGain);
+    humGain.connect(master);
+    humOsc.start();
+    S.current.ambientNodes.push(humOsc);
+
+    // ── PERIODIC CHECKOUT BEEP ───────────────────────────────────────────────
+    // Sounds like a barcode scanner — two short tones in quick succession
+    const scheduleBeep = () => {
+      const t = setTimeout(() => {
+        if (!S.current.ambientRunning) return;
+        const now = ctx.currentTime;
+        [880, 1050].forEach((freq, i) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = freq;
+          const start = now + i * 0.1;
+          g.gain.setValueAtTime(0.05, start);
+          g.gain.exponentialRampToValueAtTime(0.001, start + 0.09);
+          o.connect(g);
+          g.connect(master);
+          o.start(start);
+          o.stop(start + 0.09);
+        });
+        scheduleBeep();
+      }, 5000 + Math.random() * 10000);
+      S.current.timers.push(t);
+    };
+    scheduleBeep();
+
+    // ── PERIODIC TROLLEY RATTLE ──────────────────────────────────────────────
+    // Short burst of high-frequency noise — wheels on lino
+    const scheduleRattle = () => {
+      const t = setTimeout(() => {
+        if (!S.current.ambientRunning) return;
+        const now = ctx.currentTime;
+        const rBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.18), ctx.sampleRate);
+        const rd = rBuf.getChannelData(0);
+        for (let i = 0; i < rd.length; i++) rd[i] = Math.random() * 2 - 1;
+        const rSrc = ctx.createBufferSource();
+        rSrc.buffer = rBuf;
+        const rFilter = ctx.createBiquadFilter();
+        rFilter.type = 'highpass';
+        rFilter.frequency.value = 1800;
+        const rGain = ctx.createGain();
+        rGain.gain.setValueAtTime(0.04, now);
+        rGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        rSrc.connect(rFilter);
+        rFilter.connect(rGain);
+        rGain.connect(master);
+        rSrc.start(now);
+        scheduleRattle();
+      }, 9000 + Math.random() * 14000);
+      S.current.timers.push(t);
+    };
+    scheduleRattle();
+  };
+
+  const stopAmbient = () => {
+    S.current.ambientRunning = false;
+    S.current.ambientNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+    S.current.ambientNodes = [];
+    S.current.timers.forEach(t => clearTimeout(t));
+    S.current.timers = [];
+    if (S.current.ctx) {
+      S.current.ctx.close().catch(() => {});
+      S.current.ctx = null;
+      S.current.masterGain = null;
+    }
+  };
+
+  const play = (type) => {
+    const ctx = getCtx();
+    const master = S.current.masterGain;
+
+    if (type === 'ambient') {
+      // no-op — use startAmbient() instead
+    } else if (type === 'beep') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 800;
+      osc.connect(gain);
+      gain.connect(master);
+      gain.gain.setValueAtTime(0.02, ctx.currentTime);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } else if (type === 'footstep') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 100;
+      osc.connect(gain);
+      gain.connect(master);
+      gain.gain.setValueAtTime(0.015, ctx.currentTime);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } else if (type === 'chime') {
+      const now = ctx.currentTime;
+      [600, 900].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(master);
+        gain.gain.setValueAtTime(0.05, now + i * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.3);
+        osc.start(now + i * 0.08);
+        osc.stop(now + i * 0.08 + 0.3);
+      });
+    } else if (type === 'thump') {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.25);
+      osc.connect(gain);
+      gain.connect(master);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    }
+  };
+
+  return { play, startAmbient, stopAmbient, setVolume };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PET PICKER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function PetPicker({ onStart }) {
+  const [selected, setSelected] = useState('dragon');
+  const [difficulty, setDifficulty] = useState('easy');
+
+  return (
+    <div style={{ padding: 24, textAlign: 'center', color: T.text, fontFamily: 'DM Sans' }}>
+      <div style={{ fontSize: 80, marginBottom: 12 }}>🐉</div>
+      <h1 style={{ fontSize: 28, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 8px' }}>Pick your pet</h1>
+      <p style={{ color: T.textDim, fontSize: 12, marginBottom: 20 }}>Who's going shopping?</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+        {PETS.map(pet => (
+          <button key={pet.id} onClick={() => setSelected(pet.id)} style={{
+            background: selected === pet.id ? T.cardHover : T.card,
+            border: `2px solid ${selected === pet.id ? T.teal : T.borderStrong}`,
+            borderRadius: 12, padding: 14, cursor: 'pointer', fontFamily: 'DM Sans',
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 4 }}>{pet.emoji}</div>
+            <div style={{ color: T.text, fontSize: 11, fontWeight: 700 }}>{pet.name}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Difficulty selector */}
+      <div style={{ marginBottom: 20, textAlign: 'left' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: T.muted, letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>
+          DIFFICULTY
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            onClick={() => setDifficulty('easy')}
+            style={{
+              background: difficulty === 'easy' ? T.cardHover : T.card,
+              border: `2px solid ${difficulty === 'easy' ? T.teal : T.borderStrong}`,
+              borderRadius: 12, padding: 12, cursor: 'pointer', fontFamily: 'DM Sans',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 18 }}>🌱</span>
+              <span style={{ color: T.text, fontSize: 13, fontWeight: 800 }}>Easy</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: T.amber }}>1–3 🎟️</span>
+            </div>
+            <div style={{ color: T.muted, fontSize: 10, lineHeight: 1.3 }}>
+              Whole dollars, exact pay
+            </div>
+          </button>
+          <button
+            onClick={() => setDifficulty('hard')}
+            style={{
+              background: difficulty === 'hard' ? T.cardHover : T.card,
+              border: `2px solid ${difficulty === 'hard' ? T.amber : T.borderStrong}`,
+              borderRadius: 12, padding: 12, cursor: 'pointer', fontFamily: 'DM Sans',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 18 }}>🔥</span>
+              <span style={{ color: T.text, fontSize: 13, fontWeight: 800 }}>Hard</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: T.amber }}>2–5 🎟️</span>
+            </div>
+            <div style={{ color: T.muted, fontSize: 10, lineHeight: 1.3 }}>
+              Cents, budget, work out change
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <button onClick={() => onStart(selected, difficulty)} style={{
+        background: T.teal, color: T.bg, border: 'none', borderRadius: 14, padding: '14px 28px',
+        fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans', width: '100%',
+      }}>
+        Start →
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEPARTURE SEQUENCE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function DepartureSequence({ petId, onArrived }) {
+  const [step, setStep] = useState('home'); // home → walk_to_car → car_enter → driving → car_exit → shop_entrance
+  const [petPos, setPetPos] = useState(0); // 0-100 for animations
+  const { play } = useAmbientAudio();
+
+  const steps_config = [
+    { id: 'home', label: 'Walk to the car', desc: 'Pet leaves the house' },
+    { id: 'walk_to_car', label: 'Get in the car', desc: 'Approaching the car' },
+    { id: 'car_enter', label: 'Start driving', desc: 'Getting settled' },
+    { id: 'driving', label: 'Arrive at shops', desc: 'Pulling up' },
+    { id: 'car_exit', label: 'Get out', desc: 'Exit the car' },
+    { id: 'shop_entrance', label: 'Enter the shop', desc: 'Go in' },
+  ];
+
+  const handleNext = async () => {
+    play('beep');
+    
+    if (step === 'home') {
+      setStep('walk_to_car');
+      setPetPos(0);
+      for (let i = 0; i <= 100; i += 2) {
+        await new Promise(r => setTimeout(r, 20));
+        setPetPos(i);
+      }
+    } else if (step === 'walk_to_car') {
+      setStep('car_enter');
+    } else if (step === 'car_enter') {
+      setStep('driving');
+      setPetPos(0);
+      for (let i = 0; i <= 100; i += 2) {
+        await new Promise(r => setTimeout(r, 30));
+        setPetPos(i);
+      }
+    } else if (step === 'driving') {
+      setStep('car_exit');
+    } else if (step === 'car_exit') {
+      setStep('shop_entrance');
+      setPetPos(0);
+      for (let i = 0; i <= 100; i += 2) {
+        await new Promise(r => setTimeout(r, 20));
+        setPetPos(i);
+      }
+    } else if (step === 'shop_entrance') {
+      onArrived();
+    }
+  };
+
+  const pet = PETS.find(p => p.id === petId);
+
+  return (
+    <div style={{ padding: 24, textAlign: 'center', color: T.text, fontFamily: 'DM Sans' }}>
+      {/* Scene */}
+      <div style={{ background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 12, padding: '24px', marginBottom: 20, minHeight: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        {step === 'home' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>🏠 Home</div>
+            <div style={{ fontSize: 80, animation: 'bob 1.5s ease-in-out infinite' }}>{pet.emoji}</div>
+          </>
+        )}
+        
+        {step === 'walk_to_car' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>Walking to the car...</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+              <div style={{ fontSize: 64, opacity: Math.min(1, petPos / 50) }}>{pet.emoji}</div>
+              <div style={{ fontSize: 64, opacity: Math.max(0, 1 - petPos / 50) }}>🚗</div>
+            </div>
+          </>
+        )}
+
+        {step === 'car_enter' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>Getting in the car</div>
+            <div style={{ fontSize: 80, animation: 'bob 1.5s ease-in-out infinite' }}>🚗</div>
+          </>
+        )}
+
+        {step === 'driving' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>Driving to the shops...</div>
+            <svg viewBox="0 0 200 120" style={{ width: 200, height: 120, marginBottom: 12 }}>
+              {/* Road */}
+              <rect y={60} width={200} height={30} fill="#444" />
+              {/* Road lines */}
+              <line x1={0} y1={75} x2={200} y2={75} stroke="#ffff00" strokeWidth={2} strokeDasharray="15,10" />
+              {/* Car */}
+              <rect x={30 + (petPos / 100) * 120} y={50} width={40} height={30} fill="#ff0000" rx={2} />
+              <circle cx={40 + (petPos / 100) * 120} cy={80} r={3} fill="#333" />
+              <circle cx={60 + (petPos / 100) * 120} cy={80} r={3} fill="#333" />
+              {/* Scenery */}
+              <rect x={10} y={30} width={20} height={30} fill="#228b22" />
+              <rect x={150} y={35} width={25} height={25} fill="#228b22" />
+            </svg>
+            <div style={{ fontSize: 48 }}>🚗</div>
+          </>
+        )}
+
+        {step === 'car_exit' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>At the shops!</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+              <div style={{ fontSize: 64, animation: 'bob 1.5s ease-in-out infinite' }}>{pet.emoji}</div>
+              <div style={{ fontSize: 64 }}>🛒</div>
+            </div>
+          </>
+        )}
+
+        {step === 'shop_entrance' && (
+          <>
+            <div style={{ fontSize: 16, color: T.muted, marginBottom: 12 }}>Entering the shop...</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 64, opacity: Math.max(0, 1 - petPos / 50) }}>{pet.emoji}</div>
+              <div style={{ fontSize: 48, opacity: Math.min(1, petPos / 50) }}>🚪</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Info & button */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ color: T.teal, fontSize: 16, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 4px' }}>
+          {steps_config.find(s => s.id === step)?.label}
+        </h2>
+        <p style={{ color: T.textDim, fontSize: 12, margin: 0 }}>
+          {steps_config.find(s => s.id === step)?.desc}
+        </p>
+      </div>
+
+      <button onClick={handleNext} style={{
+        background: T.teal, color: T.bg, border: 'none', borderRadius: 14, padding: '12px 24px',
+        fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans', width: '100%',
+      }}>
+        {step === 'shop_entrance' ? 'Start shopping →' : 'Next →'}
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHOP SECTIONS — each section has its own left and right shelf themes
+// As pet walks through (petY changes), the aisle products change.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SHOP_SECTIONS = [
+  {
+    id: 'front',
+    name: 'Entry & Checkout',
+    yRange: [0, 1],
+    signWorldY: 0,
+    leftSign: 'EXIT',
+    leftSignColor: '#1d3557',
+    rightSign: 'CHECKOUT',
+    rightSignColor: '#e63946',
+  },
+  {
+    id: 'cereal',
+    name: 'Cereal & Snacks',
+    yRange: [2, 3],
+    signWorldY: 2,
+    leftSign: 'CEREAL',
+    leftSignColor: '#2c5282',
+    rightSign: 'SNACKS',
+    rightSignColor: '#588157',
+  },
+  {
+    id: 'dairy',
+    name: 'Dairy & Bakery',
+    yRange: [4, 5],
+    signWorldY: 4,
+    leftSign: 'DAIRY',
+    leftSignColor: '#118ab2',
+    rightSign: 'BAKERY',
+    rightSignColor: '#e76f51',
+  },
+  {
+    id: 'frozen',
+    name: 'Frozen & Produce',
+    yRange: [6, 7],
+    signWorldY: 6,
+    leftSign: 'FROZEN',
+    leftSignColor: '#1d3557',
+    rightSign: 'PRODUCE',
+    rightSignColor: '#06a77d',
+  },
+];
+
+function getCurrentSection(petY) {
+  return SHOP_SECTIONS.find(s => petY >= s.yRange[0] && petY <= s.yRange[1]) || SHOP_SECTIONS[0];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHOP MAP — top-down tile data
+// Each tile char represents what's there. Pet can only walk on "." or "d".
+// gridY=0 is the FRONT of the shop (entry/checkout); gridY=7 is the BACK.
+// In screen rendering, gridY=0 is drawn at the BOTTOM so "forward" walks up.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const GRID_W = 10;
+const GRID_H = 8;
+
+const SHOP_MAP = [
+  // gridY=0 — front (walls + entry doors)
+  ['#', '#', '#', '#', 'd', 'd', '#', '#', '#', '#'],
+  // gridY=1 — checkout row
+  ['c', 'c', 'c', 'c', '.', '.', 'c', 'c', 'c', 'c'],
+  // gridY=2 — front aisle (pet starts here at col 2)
+  ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+  // gridY=3 — shelf row (cereal & snacks)
+  ['.', '.', 's', 's', '.', 's', 's', 's', '.', '.'],
+  // gridY=4 — shelf row (cereal & snacks)
+  ['.', '.', 's', 's', '.', 's', 's', 's', '.', '.'],
+  // gridY=5 — shelf row + side dept walls
+  ['m', '.', 's', 's', '.', 's', 's', 's', '.', 'b'],
+  // gridY=6 — back aisle
+  ['m', '.', '.', '.', '.', '.', '.', '.', '.', 'b'],
+  // gridY=7 — back wall (produce | frozen)
+  ['p', 'p', 'p', 'p', 'f', 'f', 'f', 'f', 'f', 'f'],
+];
+
+function tileAt(x, y) {
+  if (y < 0 || y >= GRID_H || x < 0 || x >= GRID_W) return '#';
+  return SHOP_MAP[y][x];
+}
+
+function isWalkable(x, y) {
+  const t = tileAt(x, y);
+  return t === '.' || t === 'd';
+}
+
+// Other shoppers placed on walkable tiles for ambient atmosphere
+const SHOPPERS = [
+  { x: 4, y: 2, hair: '#3a2611', shirt: '#f4a261' },
+  { x: 6, y: 4, hair: '#1d1d1d', shirt: '#2a9d8f' },
+  { x: 1, y: 6, hair: '#c97b3c', shirt: '#e76f51' },
+  { x: 7, y: 6, hair: '#3a2611', shirt: '#118ab2' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHOPPING ITEMS — each lives in a specific department/shelf
+// Pet collects by walking onto a tile adjacent to the item's location.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SG_GROCERY_ITEMS = [
+  // === Cereal Aisle ===
+  { id: 'cereal',    name: 'Cereal',    emoji: '🥣', dept: 'Cereal Aisle', x: 2, y: 4, price: 5, cents: 480 },
+  { id: 'pasta',     name: 'Pasta',     emoji: '🍝', dept: 'Cereal Aisle', x: 3, y: 3, price: 2, cents: 220 },
+  { id: 'oats',      name: 'Oats',      emoji: '🌾', dept: 'Cereal Aisle', x: 2, y: 3, price: 3, cents: 350 },
+  { id: 'rice',      name: 'Rice',      emoji: '🍚', dept: 'Cereal Aisle', x: 3, y: 4, price: 4, cents: 425 },
+
+  // === Snacks Aisle ===
+  { id: 'crackers',  name: 'Crackers',  emoji: '🍘', dept: 'Snacks Aisle', x: 6, y: 3, price: 3, cents: 320 },
+  { id: 'chips',     name: 'Chips',     emoji: '🥨', dept: 'Snacks Aisle', x: 5, y: 5, price: 4, cents: 380 },
+  { id: 'cookies',   name: 'Cookies',   emoji: '🍪', dept: 'Snacks Aisle', x: 7, y: 4, price: 4, cents: 425 },
+  { id: 'pretzels',  name: 'Pretzels',  emoji: '🥖', dept: 'Snacks Aisle', x: 7, y: 5, price: 3, cents: 295 },
+  { id: 'chocolate', name: 'Chocolate', emoji: '🍫', dept: 'Snacks Aisle', x: 5, y: 3, price: 5, cents: 525 },
+
+  // === Dairy ===
+  { id: 'milk',      name: 'Milk',      emoji: '🥛', dept: 'Dairy',       x: 0, y: 5, price: 3, cents: 320 },
+  { id: 'cheese',    name: 'Cheese',    emoji: '🧀', dept: 'Dairy',       x: 0, y: 6, price: 6, cents: 580 },
+  { id: 'yoghurt',   name: 'Yoghurt',   emoji: '🍶', dept: 'Dairy',       x: 0, y: 5, price: 4, cents: 420 },
+  { id: 'butter',    name: 'Butter',    emoji: '🧈', dept: 'Dairy',       x: 0, y: 6, price: 5, cents: 495 },
+
+  // === Bakery ===
+  { id: 'bread',     name: 'Bread',     emoji: '🍞', dept: 'Bakery',      x: 9, y: 5, price: 4, cents: 380 },
+  { id: 'muffins',   name: 'Muffins',   emoji: '🧁', dept: 'Bakery',      x: 9, y: 6, price: 5, cents: 520 },
+  { id: 'donuts',    name: 'Donuts',    emoji: '🍩', dept: 'Bakery',      x: 9, y: 5, price: 6, cents: 595 },
+  { id: 'croissant', name: 'Croissant', emoji: '🥐', dept: 'Bakery',      x: 9, y: 6, price: 4, cents: 350 },
+
+  // === Produce ===
+  { id: 'apples',    name: 'Apples',    emoji: '🍎', dept: 'Produce',     x: 1, y: 7, price: 4, cents: 425 },
+  { id: 'bananas',   name: 'Bananas',   emoji: '🍌', dept: 'Produce',     x: 3, y: 7, price: 2, cents: 220 },
+  { id: 'carrots',   name: 'Carrots',   emoji: '🥕', dept: 'Produce',     x: 2, y: 7, price: 3, cents: 280 },
+  { id: 'tomatoes',  name: 'Tomatoes',  emoji: '🍅', dept: 'Produce',     x: 3, y: 7, price: 4, cents: 395 },
+
+  // === Frozen ===
+  { id: 'icecream',  name: 'Ice cream',   emoji: '🍦', dept: 'Frozen',    x: 5, y: 7, price: 7, cents: 695 },
+  { id: 'peas',      name: 'Frozen peas', emoji: '🫛', dept: 'Frozen',    x: 7, y: 7, price: 3, cents: 320 },
+  { id: 'pizza',     name: 'Frozen pizza',emoji: '🍕', dept: 'Frozen',    x: 6, y: 7, price: 8, cents: 820 },
+  { id: 'fries',     name: 'Frozen chips',emoji: '🍟', dept: 'Frozen',    x: 8, y: 7, price: 5, cents: 480 },
+];
+
+// Format cents as $X.XX
+const formatPrice = (cents) => `$${(cents / 100).toFixed(2)}`;
+
+// Hard mode: pick cash denominations to offer the teen at checkout.
+// Returns the correct (smallest note covering total) + a too-small + a too-big distractor.
+function getCashOptions(totalCents) {
+  const notes = [200, 500, 1000, 2000, 5000, 10000]; // $2, $5, $10, $20, $50, $100
+  const correct = notes.find(n => n >= totalCents) || notes[notes.length - 1];
+  const correctIdx = notes.indexOf(correct);
+  const tooSmall = notes[Math.max(0, correctIdx - 1)];
+  const tooBig = notes[Math.min(notes.length - 1, correctIdx + 2)];
+  // Make sure all 3 are unique
+  const set = new Set([correct, tooSmall, tooBig]);
+  // Pad with another denomination if needed
+  if (set.size < 3) {
+    for (const n of notes) {
+      set.add(n);
+      if (set.size === 3) break;
+    }
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+// Hard mode: build change options. Correct + 2 plausible distractors.
+function getChangeOptions(handedCents, totalCents) {
+  const correct = handedCents - totalCents;
+  const offsets = [-10, 10, -50, 50, 100, -100, 20, -20];
+  const opts = new Set([correct]);
+  let tries = 0;
+  while (opts.size < 3 && tries < 30) {
+    const off = offsets[Math.floor(Math.random() * offsets.length)];
+    const cand = correct + off;
+    if (cand >= 0 && cand !== correct) opts.add(cand);
+    tries++;
+  }
+  return [...opts].sort((a, b) => a - b);
+}
+
+// Helper: pick distractor items from the same department (excluding the target)
+function pickDistractors(target, count) {
+  const sameDept = SG_GROCERY_ITEMS.filter(i => i.dept === target.dept && i.id !== target.id);
+  const shuffled = [...sameDept].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+// Hard mode: build same-item variants at different price points (Save / Standard).
+// All variants have the same baseId so picking ANY of them collects the list item,
+// but the cheaper one is the budget-conscious choice.
+function getVariants(target) {
+  const cheapCents = Math.round(target.cents * 0.7 / 5) * 5; // round to 5c
+  return [
+    { ...target, variantId: target.id + '_save',     baseId: target.id, brand: 'Save',     cents: cheapCents },
+    { ...target, variantId: target.id + '_standard', baseId: target.id, brand: 'Standard', cents: target.cents },
+  ];
+}
+
+// Build shelf options. In easy mode: target + 2 same-dept distractors.
+// In hard mode: 2 price variants of target + 1 same-dept distractor.
+function buildShelfOptions(target, isHard) {
+  if (isHard) {
+    const variants = getVariants(target);
+    const distractor = pickDistractors(target, 1)[0];
+    if (!distractor) return variants.map(v => ({ ...v, variantId: v.variantId || v.id }));
+    const distractorOpt = { ...distractor, variantId: distractor.id, baseId: distractor.id, brand: null };
+    return [...variants, distractorOpt].sort(() => Math.random() - 0.5);
+  } else {
+    const distractors = pickDistractors(target, 2);
+    return [target, ...distractors]
+      .map(o => ({ ...o, variantId: o.id, baseId: o.id, brand: null }))
+      .sort(() => Math.random() - 0.5);
+  }
+}
+
+// Walking onto any of these tiles "reaches" the item
+function adjacentTilesFor(item) {
+  const offsets = [[-1,0],[1,0],[0,-1],[0,1]];
+  return offsets.map(([dx, dy]) => ({ x: item.x + dx, y: item.y + dy }))
+                .filter(t => isWalkable(t.x, t.y));
+}
+
+function pickShoppingList(n = 3) {
+  // Pick n items from different departments where possible for route variety
+  const byDept = {};
+  for (const it of SG_GROCERY_ITEMS) {
+    if (!byDept[it.dept]) byDept[it.dept] = [];
+    byDept[it.dept].push(it);
+  }
+  const depts = Object.keys(byDept);
+  const shuffled = [...depts].sort(() => Math.random() - 0.5);
+  const list = [];
+  for (let i = 0; i < n && i < shuffled.length; i++) {
+    const pool = byDept[shuffled[i]];
+    list.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return list;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TILE RENDERING — turns one map char into SVG at given screen position
+// ═══════════════════════════════════════════════════════════════════════════
+
+function Tile({ kind, x, y, size }) {
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  switch (kind) {
+    case '.':
+      return <rect x={x} y={y} width={size} height={size} fill="#f0ece6" stroke="#e0dccc" strokeWidth="0.4" />;
+    case '#':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#5a4a3a" />
+          <rect x={x} y={y} width={size} height={size} fill="none" stroke="#3a2e22" strokeWidth="0.5" />
+        </g>
+      );
+    case 'd':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#a87850" />
+          <rect x={x + 4} y={y + 4} width={size - 8} height={size - 8} fill="#dda15e" stroke="#8b6f47" strokeWidth="0.5" />
+          <circle cx={x + size - 8} cy={cy} r="1.2" fill="#3a2611" />
+        </g>
+      );
+    case 'c':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#e8e4dc" />
+          <rect x={x + 2} y={y + 2} width={size - 4} height={size - 4} fill="#6b5541" />
+          <rect x={x + 5} y={y + 5} width={size - 10} height={6} fill="#222" />
+          <rect x={x + 8} y={y + 14} width={size - 16} height={size - 20} fill="#1d3557" />
+          <rect x={x + 10} y={y + 16} width={size - 20} height={4} fill="#a8dadc" />
+        </g>
+      );
+    case 's':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#a89070" />
+          <rect x={x} y={y} width={size} height={size} fill="none" stroke="#6b5541" strokeWidth="0.6" />
+          <rect x={x + 3} y={y + 3} width={size - 6} height={5} fill="#d62828" />
+          <rect x={x + 3} y={y + 10} width={size - 6} height={5} fill="#003049" />
+          <rect x={x + 3} y={y + 17} width={size - 6} height={5} fill="#ffba08" />
+          <rect x={x + 3} y={y + 24} width={size - 6} height={5} fill="#06a77d" />
+        </g>
+      );
+    case 'p':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#06a77d" />
+          <rect x={x} y={y} width={size} height={size} fill="none" stroke="#386641" strokeWidth="0.5" />
+          <circle cx={x + 8} cy={y + 9} r="3" fill="#e63946" />
+          <circle cx={x + 22} cy={y + 11} r="3" fill="#fcbf49" />
+          <circle cx={x + 14} cy={y + 22} r="3" fill="#9d0208" />
+          <circle cx={x + 27} cy={y + 25} r="3" fill="#fcbf49" />
+        </g>
+      );
+    case 'f':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#caf0f8" />
+          <rect x={x + 2} y={y + 2} width={size - 4} height={size - 4} fill="#a8dadc" stroke="#5fa8d3" strokeWidth="0.5" />
+          <rect x={x + 5} y={y + 5} width={5} height={5} fill="#fff" opacity="0.85" />
+          <rect x={x + 14} y={y + 7} width={5} height={5} fill="#fff" opacity="0.85" />
+          <rect x={x + 23} y={y + 5} width={5} height={5} fill="#fff" opacity="0.85" />
+          <rect x={x + 8} y={y + 17} width={5} height={5} fill="#fff" opacity="0.85" />
+          <rect x={x + 19} y={y + 19} width={5} height={5} fill="#fff" opacity="0.85" />
+          <rect x={x + 25} y={y + 22} width={4} height={4} fill="#fff" opacity="0.85" />
+        </g>
+      );
+    case 'm':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#bde0fe" />
+          <rect x={x} y={y} width={size} height={size} fill="none" stroke="#118ab2" strokeWidth="0.5" />
+          <rect x={x + 5} y={y + 4} width={6} height={10} fill="#fff" stroke="#118ab2" strokeWidth="0.4" />
+          <rect x={x + 14} y={y + 4} width={6} height={10} fill="#fff" stroke="#118ab2" strokeWidth="0.4" />
+          <rect x={x + 23} y={y + 4} width={6} height={10} fill="#fff" stroke="#118ab2" strokeWidth="0.4" />
+          <rect x={x + 5} y={y + 18} width={9} height={9} fill="#fcbf49" rx="1" />
+          <rect x={x + 17} y={y + 18} width={9} height={9} fill="#ffd166" rx="1" />
+        </g>
+      );
+    case 'b':
+      return (
+        <g>
+          <rect x={x} y={y} width={size} height={size} fill="#fdf0d5" />
+          <rect x={x} y={y} width={size} height={size} fill="none" stroke="#bc6c25" strokeWidth="0.5" />
+          <rect x={x + 4} y={y + 5} width={11} height={8} fill="#bc6c25" rx="2" />
+          <rect x={x + 18} y={y + 5} width={11} height={8} fill="#a87850" rx="2" />
+          <ellipse cx={x + 10} cy={y + 22} rx="5" ry="4" fill="#dda15e" />
+          <ellipse cx={x + 22} cy={y + 22} rx="5" ry="4" fill="#fcbf49" />
+        </g>
+      );
+    default:
+      return <rect x={x} y={y} width={size} height={size} fill="#eee" />;
+  }
+}
+
+function FirstPersonShop({ petId, difficulty = 'easy', onBack }) {
+  const isHard = difficulty === 'hard';
+  // BUDGET in cents — pet has $25.00 to spend in hard mode
+  // Hard mode budget: 85% of standard prices for the drawn items, rounded to nearest 50c.
+  // Save brands (70% of standard) always fit comfortably.
+  // One standard-instead-of-save is forgiven; two standard picks usually goes over.
+  const BUDGET_CENTS = isHard
+    ? Math.round(shoppingList.reduce((s, i) => s + i.cents, 0) * 0.85 / 50) * 50
+    : 999999; // easy mode: effectively no budget limit
+  const [petX, setPetX] = useState(2);
+  const [petY, setPetY] = useState(2);
+  const [feeling, setFeeling] = useState(2);
+  const [activeEnc, setActiveEnc] = useState(null);
+  const [encResult, setEncResult] = useState(null);
+  const [gameState, setGameState] = useState('playing');
+  const [stepCount, setStepCount] = useState(0);
+  const [lastDir, setLastDir] = useState(null);
+  const [isMoving, setIsMoving] = useState(false);
+  const [shoppingList] = useState(() => pickShoppingList(3));
+  const [collected, setCollected] = useState(new Set());
+  const [paidPrices, setPaidPrices] = useState(new Map()); // itemId -> cents actually paid
+  const [justCollected, setJustCollected] = useState(null); // for flash feedback
+  const [paid, setPaid] = useState(false);
+  const [checkoutAttempts, setCheckoutAttempts] = useState(0);
+  const [handedCents, setHandedCents] = useState(null); // hard mode: how much cash teen handed cashier
+  const [activeShelf, setActiveShelf] = useState(null); // { item, options } for shelf-pick modal
+  const [shelfWrongPick, setShelfWrongPick] = useState(null); // id of wrong item to shake
+  const [tooFarItem, setTooFarItem] = useState(null); // id of item teen tapped but pet is too far from
+  const [ambientVolume, setAmbientVolumeState] = useState(0.25); // default: quiet
+  const { play, startAmbient, stopAmbient, setVolume } = useAmbientAudio();
+
+  // Start ambient on mount, stop on unmount
+  useEffect(() => {
+    return () => stopAmbient();
+  }, []);
+
+  // Propagate volume changes to the audio engine
+  useEffect(() => {
+    setVolume(ambientVolume);
+  }, [ambientVolume]);
+
+  const handleVolumeChange = (v) => {
+    setAmbientVolumeState(v);
+  };
+
+  const [npcs, setNpcs] = useState(() => buildNpcs(isHard));
+  const [activeNpcId, setActiveNpcId] = useState(null);
+  const [activeHelper, setActiveHelper] = useState(null);
+  const [restUsed, setRestUsed] = useState(false);
+  const [hintItem, setHintItem] = useState(null);
+
+  // Lookup helper: which NPC (if any) is standing on a tile, and which tiles are blocked
+  const npcAt = (x, y) => npcs.find(n => !n.done && n.x === x && n.y === y);
+
+  const handleMove = (dir) => {
+    if (activeEnc || activeShelf || activeHelper || gameState !== 'playing') return;
+    // Start ambient soundscape on first interaction (required by browser autoplay policy)
+    startAmbient();
+
+    let nx = petX, ny = petY;
+    if (dir === 'forward') ny = petY + 1;     // deeper into shop
+    if (dir === 'back') ny = petY - 1;        // back toward entry
+    if (dir === 'left') nx = petX - 1;
+    if (dir === 'right') nx = petX + 1;
+
+    // Wall / shelf collision — block movement into non-walkable tiles
+    if (!isWalkable(nx, ny)) {
+      play('footstep');
+      return;
+    }
+
+    // NPC collision — only STRESS NPCs block movement and trigger encounters.
+    // Helper workers are non-blocking: pet walks past freely.
+    // Helpers are interacted with by tapping their sprite on the map.
+    const blockedBy = npcAt(nx, ny);
+    if (blockedBy && blockedBy.kind === 'stress') {
+      const enc = ENCOUNTERS_DATA.find(e => e.id === blockedBy.encId);
+      setActiveNpcId(blockedBy.id);
+      setActiveEnc(enc);
+      setLastDir(dir);
+      play('footstep');
+      return;
+    }
+
+    const moved = nx !== petX || ny !== petY;
+
+    setPetX(nx);
+    setPetY(ny);
+    if (moved) {
+      setStepCount(s => s + 1);
+      setLastDir(dir);
+      setIsMoving(true);
+      setTimeout(() => setIsMoving(false), 280);
+    }
+    play('footstep');
+
+    // (Item collection no longer auto-triggers on adjacency — teen taps the
+    // "look at shelf" button when they actually want to pick the item up.)
+
+    // Win flow:
+    // 1. Collect all items (via shelf modal)
+    // 2. Walk into the checkout zone (row 1, between registers) → payment
+    // 3. After payment, walk out through any door tile (row 0) → win
+    const listDone = shoppingList.every(i => collected.has(i.id));
+
+    // Trigger checkout when listDone and pet enters the checkout-passage tile
+    if (listDone && !paid && gameState === 'playing' && ny === 1 && (nx === 4 || nx === 5)) {
+      setGameState('checkout');
+    }
+
+    // Win when paid and pet steps onto any door tile
+    if (paid && tileAt(nx, ny) === 'd') {
+      setGameState('won');
+    }
+  };
+
+  const handleChoice = (choice) => {
+    const newFeeling = Math.max(1, Math.min(5, feeling + choice.delta));
+    setFeeling(newFeeling);
+    setEncResult({ choice, newFeeling });
+
+    setTimeout(() => {
+      // Mark the NPC as done so they step aside and the tile becomes walkable
+      if (activeNpcId) {
+        setNpcs(prev => prev.map(n => n.id === activeNpcId ? { ...n, done: true } : n));
+      }
+      setActiveEnc(null);
+      setEncResult(null);
+      setActiveNpcId(null);
+      if (newFeeling >= 5) {
+        setGameState('overflowed');
+      }
+    }, 2200);
+  };
+
+  // Shelf picker handlers
+  const handleShelfPick = (picked) => {
+    if (!activeShelf) return;
+    // Picked baseId matches the target — any variant of the right item counts as correct
+    if (picked.baseId === activeShelf.item.id) {
+      setCollected(prev => {
+        const next = new Set(prev);
+        next.add(activeShelf.item.id);
+        return next;
+      });
+      // Record actual price paid (variant cents in hard mode, catalog cents in easy)
+      setPaidPrices(prev => {
+        const next = new Map(prev);
+        next.set(activeShelf.item.id, picked.cents);
+        return next;
+      });
+      setJustCollected({ ...activeShelf.item, brand: picked.brand, paidCents: picked.cents });
+      setTimeout(() => setJustCollected(null), 1400);
+      play('chime');
+      setActiveShelf(null);
+      setShelfWrongPick(null);
+    } else {
+      // Wrong — shake the wrong item briefly
+      setShelfWrongPick(picked.variantId);
+      play('thump');
+      setTimeout(() => setShelfWrongPick(null), 600);
+    }
+  };
+
+  const handleShelfLeave = () => {
+    setActiveShelf(null);
+    setShelfWrongPick(null);
+  };
+
+  // Helper worker handlers (the friendly green-apron staff member)
+  const handleHelperRest = () => {
+    if (restUsed) return;
+    const newFeeling = Math.max(1, feeling - 1);
+    setFeeling(newFeeling);
+    setRestUsed(true);
+    play('chime');
+    setActiveHelper(null);
+  };
+
+  const handleHelperHint = (item) => {
+    // Teen chose a specific item to ask about — highlight it on the map for 5s
+    setHintItem(item.id);
+    setTimeout(() => setHintItem(null), 5000);
+    setActiveHelper(null);
+  };
+
+  const handleHelperLeave = () => {
+    setActiveHelper(null);
+  };
+
+  // ─── CHECKOUT SCENE ───────────────────────────────────────────────────────
+  if (gameState === 'checkout') {
+    const items = shoppingList;
+
+    // Helper to always compute the live total from current paidPrices — avoids stale closures
+    const computeTotal = () => isHard
+      ? items.reduce((s, i) => s + (paidPrices.get(i.id) ?? i.cents), 0)
+      : items.reduce((s, i) => s + i.price, 0) * 100;
+
+    // Stable display value for the receipt
+    const totalCents = computeTotal();
+
+    // Easy mode: single-step exact pay
+    // Hard mode: step 1 = give cash, step 2 = pick change
+    const easyOptions = (() => {
+      if (isHard) return [];
+      const total = items.reduce((s, i) => s + i.price, 0);
+      const opts = new Set([total]);
+      while (opts.size < 3) {
+        const offset = [1, 2, 3, -1, -2][Math.floor(Math.random() * 5)];
+        const candidate = total + offset;
+        if (candidate > 0) opts.add(candidate);
+      }
+      return [...opts].sort((a, b) => a - b);
+    })();
+
+    const cashOptions = isHard ? getCashOptions(totalCents) : [];
+    const changeOptions = (isHard && handedCents !== null)
+      ? getChangeOptions(handedCents, totalCents) : [];
+
+    const handleEasyPayment = (amount) => {
+      const totalDollars = items.reduce((s, i) => s + i.price, 0);
+      if (amount === totalDollars) {
+        play('chime');
+        setPaid(true);
+        setGameState('playing');
+      } else {
+        const newFeeling = Math.min(5, feeling + 1);
+        setFeeling(newFeeling);
+        setCheckoutAttempts(a => a + 1);
+        play('thump');
+        if (newFeeling >= 5) {
+          setTimeout(() => setGameState('overflowed'), 600);
+        }
+      }
+    };
+
+    const handleCashPick = (cents) => {
+      const liveTotalCents = computeTotal();
+      if (cents >= liveTotalCents) {
+        const correct = cashOptions.find(n => n >= liveTotalCents);
+        if (cents === correct) {
+          play('chime');
+          setHandedCents(cents);
+        } else {
+          const newFeeling = Math.min(5, feeling + 1);
+          setFeeling(newFeeling);
+          setCheckoutAttempts(a => a + 1);
+          play('thump');
+          if (newFeeling >= 5) setTimeout(() => setGameState('overflowed'), 600);
+        }
+      } else {
+        const newFeeling = Math.min(5, feeling + 1);
+        setFeeling(newFeeling);
+        setCheckoutAttempts(a => a + 1);
+        play('thump');
+        if (newFeeling >= 5) setTimeout(() => setGameState('overflowed'), 600);
+      }
+    };
+
+    const handleChangePick = (cents) => {
+      // Recompute total fresh here to avoid any stale closure issues
+      const liveTotalCents = computeTotal();
+      const correctChange = handedCents - liveTotalCents;
+      if (cents === correctChange) {
+        play('chime');
+        setPaid(true);
+        setHandedCents(null); // clean up after successful payment
+        setGameState('playing');
+      } else {
+        const newFeeling = Math.min(5, feeling + 1);
+        setFeeling(newFeeling);
+        setCheckoutAttempts(a => a + 1);
+        play('thump');
+        if (newFeeling >= 5) setTimeout(() => setGameState('overflowed'), 600);
+      }
+    };
+
+    return (
+      <div style={{ padding: 20, color: T.text, fontFamily: 'DM Sans', maxWidth: 480, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: 40, marginBottom: 6 }}>🛒</div>
+          <h2 style={{ color: T.teal, fontSize: 22, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 4px' }}>
+            At the checkout
+          </h2>
+          <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
+            {!isHard
+              ? 'The cashier scans your items. Time to pay.'
+              : handedCents === null
+                ? 'The cashier scans your items. What note should you give?'
+                : 'The cashier rings up your total. Check your change.'}
+          </p>
+        </div>
+
+        {/* Receipt */}
+        <div style={{
+          background: '#fff', color: '#222', padding: 16, borderRadius: 8,
+          fontFamily: 'monospace', fontSize: 13, marginBottom: 14,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+        }}>
+          <div style={{ textAlign: 'center', borderBottom: '1px dashed #999', paddingBottom: 8, marginBottom: 8, fontWeight: 800 }}>
+            ━━━ HATCH MART ━━━
+          </div>
+          {items.map(item => {
+            const paidCents = paidPrices.get(item.id) ?? item.cents;
+            return (
+              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span>{item.emoji} {item.name}</span>
+                <span>{isHard ? formatPrice(paidCents) : `$${item.price}.00`}</span>
+              </div>
+            );
+          })}
+          <div style={{ borderTop: '1px dashed #999', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
+            <span>TOTAL</span>
+            <span>{isHard ? formatPrice(totalCents) : `$${items.reduce((s, i) => s + i.price, 0)}.00`}</span>
+          </div>
+          {isHard && handedCents !== null && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12 }}>
+                <span>You gave</span>
+                <span>{formatPrice(handedCents)}</span>
+              </div>
+              <div style={{ borderTop: '1px dashed #999', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 14, color: T.green }}>
+                <span>CHANGE</span>
+                <span>?</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {checkoutAttempts > 0 && (
+          <div style={{
+            background: `${T.amber}22`, border: `1px solid ${T.amber}`,
+            color: T.amber, padding: 10, borderRadius: 8, fontSize: 12,
+            marginBottom: 12, textAlign: 'center', fontWeight: 700,
+          }}>
+            Not quite — pet's getting stressed. {isHard ? 'Use the calculator to check your math.' : 'Check the receipt and add carefully.'}
+          </div>
+        )}
+
+        {/* Pet's patience at checkout — stakes are visible */}
+        {(() => {
+          const patience = Math.max(0, 6 - feeling);
+          const colors = ['#FF4D4D', '#FF8C42', T.amber, T.teal, T.green];
+          return (
+            <div style={{ marginBottom: 12, padding: 8, background: T.surface, borderRadius: 8, border: `1px solid ${T.borderStrong}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: T.muted }}>🧘 Pet's patience</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: patience <= 1 ? '#FF4D4D' : patience <= 2 ? T.amber : T.green }}>
+                  {patience <= 1 ? 'Nearly overwhelmed!' : patience <= 2 ? 'Getting stressed' : 'Hanging in there'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {[5, 4, 3, 2, 1].map(n => (
+                  <div key={n} style={{
+                    flex: 1, height: 8, borderRadius: 2,
+                    background: n <= patience ? colors[n - 1] : T.bg,
+                    border: `1px solid ${T.borderStrong}`,
+                  }} />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* === EASY MODE: single-step exact-amount pick === */}
+        {!isHard && (
+          <>
+            <div style={{ marginBottom: 10, fontWeight: 700, fontSize: 13, textAlign: 'center', color: T.textDim }}>
+              How much do you need to give the cashier?
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {easyOptions.map(amt => (
+                <button
+                  key={amt}
+                  onClick={() => handleEasyPayment(amt)}
+                  style={{
+                    background: T.card, color: T.text,
+                    border: `2px solid ${T.borderStrong}`, borderRadius: 12,
+                    padding: '14px 8px', fontSize: 18, fontWeight: 800,
+                    cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = T.teal}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = T.borderStrong}
+                >
+                  ${amt}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 16, color: T.muted, fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+              Tip: add up the prices on your receipt
+            </div>
+          </>
+        )}
+
+        {/* === HARD MODE STEP 1: pick cash to hand over === */}
+        {isHard && handedCents === null && (
+          <>
+            <div style={{ marginBottom: 10, fontWeight: 700, fontSize: 13, textAlign: 'center', color: T.textDim }}>
+              What's the smallest note that covers the total?
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+              {cashOptions.map(amt => (
+                <button
+                  key={amt}
+                  onClick={() => handleCashPick(amt)}
+                  style={{
+                    background: T.card, color: T.text,
+                    border: `2px solid ${T.borderStrong}`, borderRadius: 12,
+                    padding: '14px 8px', cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = T.teal}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = T.borderStrong}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 2 }}>💵</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{formatPrice(amt)}</div>
+                </button>
+              ))}
+            </div>
+            <Calculator />
+          </>
+        )}
+
+        {/* === HARD MODE STEP 2: pick correct change === */}
+        {isHard && handedCents !== null && (
+          <>
+            <div style={{ marginBottom: 10, fontWeight: 700, fontSize: 13, textAlign: 'center', color: T.textDim }}>
+              You gave <span style={{ color: T.teal, fontWeight: 800 }}>{formatPrice(handedCents)}</span>.
+              How much change should you get back?
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+              {changeOptions.map(amt => (
+                <button
+                  key={amt}
+                  onClick={() => handleChangePick(amt)}
+                  style={{
+                    background: T.card, color: T.text,
+                    border: `2px solid ${T.borderStrong}`, borderRadius: 12,
+                    padding: '14px 8px', cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = T.teal}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = T.borderStrong}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 2 }}>🪙</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{formatPrice(amt)}</div>
+                </button>
+              ))}
+            </div>
+            <Calculator />
+            <div style={{ marginTop: 14, color: T.muted, fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}>
+              Tip: change = what you gave − the total
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Reset all run state for a fresh attempt
+  const resetGame = () => {
+    setPetX(2);
+    setPetY(2);
+    setFeeling(2);
+    setActiveEnc(null);
+    setEncResult(null);
+    setGameState('playing');
+    setStepCount(0);
+    setLastDir(null);
+    setIsMoving(false);
+    setCollected(new Set());
+    setPaidPrices(new Map());
+    setJustCollected(null);
+    setPaid(false);
+    setCheckoutAttempts(0);
+    setHandedCents(null);
+    setNpcs(buildNpcs(isHard));
+    setActiveNpcId(null);
+    setActiveHelper(null);
+    setRestUsed(false);
+    setHintItem(null);
+    setActiveShelf(null);
+    setShelfWrongPick(null);
+    setTooFarItem(null);
+  };
+
+  if (gameState === 'won') {
+    // Tickets: easy = 1-3, hard = 2-5
+    const baseTickets = isHard ? 2 : 1;
+    const perfectCheckoutBonus = checkoutAttempts === 0 ? 1 : 0;
+    const stayedCalmBonus = feeling <= 3 ? 1 : 0;
+    const onBudgetBonus = isHard && budgetLeftCents >= 0 ? 1 : 0;
+    const ticketsEarned = baseTickets + perfectCheckoutBonus + stayedCalmBonus + onBudgetBonus;
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: T.text, fontFamily: 'DM Sans' }}>
+        <div style={{ fontSize: 64, marginBottom: 12 }}>✨</div>
+        <h2 style={{ color: T.green, fontSize: 28, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 8px' }}>Shopping done!</h2>
+        <p style={{ color: T.textDim, fontSize: 13, marginBottom: 4 }}>Pet found everything, paid the cashier, and walked out.</p>
+        <p style={{ color: T.muted, fontSize: 12, marginBottom: 16 }}>
+          That was a lot to handle — well done.
+          {isHard && ' Hard mode complete!'}
+        </p>
+
+        {/* Tickets earned */}
+        <div style={{
+          display: 'inline-block', background: `${T.amber}22`, border: `2px solid ${T.amber}`,
+          padding: '12px 20px', borderRadius: 14, marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: 1, marginBottom: 4 }}>
+            TICKETS EARNED {isHard && '🔥'}
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: T.amber }}>
+            {'🎟️ '.repeat(ticketsEarned).trim()}
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
+            +{ticketsEarned} ticket{ticketsEarned === 1 ? '' : 's'}
+            {isHard && <span style={{ color: T.amber }}> · hard mode</span>}
+            {checkoutAttempts === 0 && <span style={{ color: T.green }}> · perfect checkout</span>}
+            {feeling <= 3 && <span style={{ color: T.teal }}> · stayed calm</span>}
+            {onBudgetBonus > 0 && <span style={{ color: T.green }}> · on budget</span>}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <button onClick={() => onBack({ tickets: ticketsEarned })} style={{
+            background: T.teal, color: T.bg, border: 'none', borderRadius: 14, padding: '12px 24px',
+            fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans',
+          }}>
+            Back →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'overflowed') {
+    // Determine where the pet got overwhelmed for tailored messaging
+    const overwhelmedAtCheckout = checkoutAttempts > 0 && !paid;
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: T.text, fontFamily: 'DM Sans' }}>
+        <div style={{ fontSize: 64, marginBottom: 12 }}>😩</div>
+        <h2 style={{ color: T.amber, fontSize: 26, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 8px' }}>
+          Pet got overwhelmed
+        </h2>
+        <p style={{ color: T.textDim, fontSize: 13, marginBottom: 4, lineHeight: 1.5 }}>
+          {overwhelmedAtCheckout
+            ? 'The wrong amounts at checkout were too much for pet to handle.'
+            : 'Too much in the shop today. Pet had to leave without finishing.'}
+        </p>
+        <p style={{ color: T.muted, fontSize: 12, marginBottom: 16, lineHeight: 1.5 }}>
+          That's okay — overwhelm happens. Try the run again when you're ready.
+        </p>
+
+        {/* No tickets banner */}
+        <div style={{
+          display: 'inline-block', background: `${T.red}15`, border: `2px solid ${T.red}55`,
+          padding: '10px 18px', borderRadius: 14, marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: 1, marginBottom: 4 }}>
+            TICKETS EARNED
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.red, opacity: 0.7 }}>
+            🎟️ × 0
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
+            no tickets — finish the run to earn
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={resetGame} style={{
+            background: T.teal, color: T.bg, border: 'none', borderRadius: 14, padding: '12px 24px',
+            fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans',
+          }}>
+            Try again ↻
+          </button>
+          <button onClick={() => onBack({ tickets: 0 })} style={{
+            background: T.card, color: T.text, border: `1px solid ${T.borderStrong}`, borderRadius: 14,
+            padding: '12px 24px', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans',
+          }}>
+            Back to home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const pet = PETS.find(p => p.id === petId);
+  const currentSection = getCurrentSection(petY);
+  // Subtle scroll jiggle within an aisle — moves products slightly each step to suggest motion
+  const scrollOffset = ((stepCount * 6) % 12) - 6;
+
+  // Budget calculation (hard mode): sum the actual prices paid for collected items
+  const basketTotalCents = shoppingList
+    .filter(i => collected.has(i.id))
+    .reduce((s, i) => s + (paidPrices.get(i.id) ?? i.cents), 0);
+  const budgetLeftCents = BUDGET_CENTS - basketTotalCents;
+
+  // Teen taps a HELPER worker on the map — opens helper modal if adjacent
+  const handleHelperMapClick = (npc) => {
+    const adj = [[-1,0],[1,0],[0,-1],[0,1]].some(([dx,dy]) => petX === npc.x+dx && petY === npc.y+dy);
+    if (adj || (petX === npc.x && petY === npc.y)) {
+      setActiveHelper(npc);
+    } else {
+      setTooFarItem('helper_' + npc.id);
+      setTimeout(() => setTooFarItem(null), 1200);
+    }
+  };
+  // Only opens the shelf if the pet is adjacent (eye-spy: find it AND be next to it).
+  // Otherwise flashes a "walk closer" signal on that item for 1.2s.
+  const handleItemMapClick = (item) => {
+    if (collected.has(item.id)) return;
+    const adj = adjacentTilesFor(item);
+    if (adj.some(t => t.x === petX && t.y === petY)) {
+      const options = buildShelfOptions(item, isHard);
+      setActiveShelf({ item, options });
+    } else {
+      setTooFarItem(item.id);
+      setTimeout(() => setTooFarItem(null), 1200);
+    }
+  };
+
+  return (
+    <div style={{ padding: 20, color: T.text, fontFamily: 'DM Sans' }}>
+
+      {/* Patience meter — at the very top so teen always knows pet's current state */}
+      {(() => {
+        // patience = inverse of feeling: feeling=1 → 5 bars, feeling=5 → 0 bars
+        const patience = Math.max(0, 6 - feeling);
+        const colors = ['#FF4D4D', '#FF8C42', T.amber, T.teal, T.green];
+        const labels = ['😰 Overwhelmed', '😟 Struggling', '😐 Managing', '😊 Calm', '😄 Very calm'];
+        const label = labels[Math.min(4, patience === 0 ? 0 : patience - 1)];
+        return (
+          <div style={{ marginBottom: 10, padding: '8px 12px', background: T.card, borderRadius: 10, border: `1px solid ${T.borderStrong}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: T.muted, letterSpacing: 1 }}>🧘 PET'S PATIENCE</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: patience <= 1 ? '#FF4D4D' : patience <= 2 ? T.amber : T.green }}>
+                {label}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 3 }}>
+              {[5, 4, 3, 2, 1].map(n => (
+                <div key={n} style={{
+                  flex: 1, height: 8, borderRadius: 2,
+                  background: n <= patience ? colors[n - 1] : T.surface,
+                  border: `1px solid ${T.borderStrong}`,
+                  transition: 'background 0.4s',
+                }} />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Shopping list — compact, at the top so map and arrows fit on one screen */}
+      <div style={{ marginBottom: 12, padding: 10, background: T.card, borderRadius: 10, border: `1px solid ${T.borderStrong}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 800, fontSize: 12, fontFamily: 'Syne', letterSpacing: 1 }}>
+              🛒 SHOPPING LIST
+            </span>
+            <span style={{
+              fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+              background: isHard ? `${T.amber}33` : `${T.green}33`,
+              color: isHard ? T.amber : T.green,
+              letterSpacing: 0.5,
+            }}>
+              {isHard ? '🔥 HARD' : '🌱 EASY'}
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700 }}>
+            {[...collected].filter(id => shoppingList.find(i => i.id === id)).length} / {shoppingList.length}
+            {paid && <span style={{ marginLeft: 8, color: T.green }}>• PAID ✓</span>}
+          </div>
+        </div>
+
+        {/* Hard mode: budget bar */}
+        {isHard && !paid && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 10, fontWeight: 700 }}>
+              <span style={{ color: T.muted }}>💰 BUDGET</span>
+              <span style={{
+                color: budgetLeftCents < 0 ? T.red : budgetLeftCents < 100 ? T.amber : T.green,
+                fontFamily: 'monospace',
+              }}>
+                {budgetLeftCents < 0
+                  ? `${formatPrice(Math.abs(budgetLeftCents))} OVER!`
+                  : `${formatPrice(budgetLeftCents)} left`} / {formatPrice(BUDGET_CENTS)}
+              </span>
+            </div>
+            <div style={{ height: 6, background: T.surface, borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(100, Math.max(0, (budgetLeftCents / BUDGET_CENTS) * 100))}%`,
+                background: budgetLeftCents < 0 ? T.red : budgetLeftCents < 100 ? T.amber : T.green,
+                transition: 'width 0.3s, background 0.3s',
+              }} />
+            </div>
+            <div style={{ fontSize: 9, color: T.muted, marginTop: 3 }}>
+              💚 Save Brand = safe &nbsp;·&nbsp; Standard = check the price first
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {shoppingList.map(item => {
+            const done = collected.has(item.id);
+            return (
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '4px 8px', borderRadius: 14,
+                background: done ? `${T.green}22` : T.surface,
+                border: `1px solid ${done ? T.green : T.borderStrong}`,
+                opacity: done ? 0.65 : 1,
+                fontSize: 11, fontWeight: 700,
+                transition: 'all 0.3s',
+                whiteSpace: 'nowrap',
+              }}>
+                <span style={{ fontSize: 13, filter: done ? 'grayscale(0.7)' : 'none' }}>{item.emoji}</span>
+                <span style={{ textDecoration: done ? 'line-through' : 'none' }}>{item.name}</span>
+                <span style={{ color: T.muted, fontSize: 9, fontWeight: 600 }}>· {done ? '✓' : item.dept}</span>
+                {isHard && !done && (
+                  <span style={{ color: T.amber, fontSize: 9, fontWeight: 700, fontFamily: 'monospace' }}>
+                    {formatPrice(item.cents)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {shoppingList.every(i => collected.has(i.id)) && !paid && (
+          <div style={{ marginTop: 8, padding: 6, background: `${T.green}33`, borderRadius: 5, fontSize: 11, fontWeight: 700, textAlign: 'center', color: T.green }}>
+            All items! Walk to the checkout passage between the registers 🛒
+          </div>
+        )}
+        {paid && (
+          <div style={{ marginTop: 8, padding: 8, background: `${T.teal}33`, borderRadius: 5, fontWeight: 700, textAlign: 'center', color: T.teal }}>
+            <div style={{ fontSize: 13, marginBottom: 3 }}>Paid! 🎉 Walk out through the doors</div>
+            <div style={{ fontSize: 11, color: T.muted }}>
+              The doors are at the bottom of the map — press <strong style={{ color: T.teal }}>↓</strong> to walk out
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Top-down shop floor plan */}
+      <div style={{ border: `2px solid ${T.borderStrong}`, borderRadius: 12, marginBottom: 16, aspectRatio: '4/3', overflow: 'hidden', background: '#0a0f1a', position: 'relative' }}>
+        <svg viewBox="0 0 400 300" style={{ width: '100%', height: '100%', display: 'block' }}>
+          <defs>
+            <radialGradient id="petGlow">
+              <stop offset="0%" stopColor={T.teal} stopOpacity="0.55" />
+              <stop offset="100%" stopColor={T.teal} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="encounterGlow">
+              <stop offset="0%" stopColor={T.amber} stopOpacity="0.7" />
+              <stop offset="100%" stopColor={T.amber} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="goalGlow">
+              <stop offset="0%" stopColor={T.green} stopOpacity="0.6" />
+              <stop offset="100%" stopColor={T.green} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Background outside the shop (the world beyond the walls) */}
+          <rect width="400" height="300" fill="#0a0f1a" />
+
+          {/* === MAP TILES === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            // gridY=0 at BOTTOM of screen, gridY=7 at TOP (forward arrow walks pet upward)
+            const tiles = [];
+            for (let gy = 0; gy < GRID_H; gy++) {
+              for (let gx = 0; gx < GRID_W; gx++) {
+                tiles.push(
+                  <Tile key={`${gx},${gy}`} kind={tileAt(gx, gy)}
+                        x={ox + gx * ts} y={oy + (GRID_H - 1 - gy) * ts} size={ts} />
+                );
+              }
+            }
+            return tiles;
+          })()}
+
+          {/* === DEPARTMENT LABELS === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            const yScr = (gy) => oy + (GRID_H - 1 - gy) * ts;
+            return (
+              <>
+                {/* PRODUCE — back-left wall */}
+                <text x={ox + 2 * ts} y={yScr(7) + 22} fontSize="11" fontWeight="800"
+                      textAnchor="middle" fill="#fff" fontFamily="Syne" letterSpacing="1.8">PRODUCE</text>
+                {/* FROZEN — back-right wall */}
+                <text x={ox + 7 * ts} y={yScr(7) + 22} fontSize="11" fontWeight="800"
+                      textAnchor="middle" fill="#1d3557" fontFamily="Syne" letterSpacing="1.8">FROZEN</text>
+                {/* DAIRY — left wall, vertical */}
+                <g transform={`translate(${ox + 18}, ${yScr(5) + ts}) rotate(-90)`}>
+                  <text x="0" y="0" fontSize="9" fontWeight="800" textAnchor="middle"
+                        fill="#118ab2" fontFamily="Syne" letterSpacing="1.4">DAIRY</text>
+                </g>
+                {/* BAKERY — right wall, vertical */}
+                <g transform={`translate(${ox + 9 * ts + 18}, ${yScr(5) + ts}) rotate(-90)`}>
+                  <text x="0" y="0" fontSize="9" fontWeight="800" textAnchor="middle"
+                        fill="#bc6c25" fontFamily="Syne" letterSpacing="1.4">BAKERY</text>
+                </g>
+                {/* CHECKOUT — across checkout row */}
+                <text x={ox + 2 * ts} y={yScr(1) + 13} fontSize="7" fontWeight="800"
+                      textAnchor="middle" fill="#fff" fontFamily="Syne" letterSpacing="1.4" opacity="0.9">CHECKOUT</text>
+                <text x={ox + 8 * ts} y={yScr(1) + 13} fontSize="7" fontWeight="800"
+                      textAnchor="middle" fill="#fff" fontFamily="Syne" letterSpacing="1.4" opacity="0.9">CHECKOUT</text>
+                {/* ENTRY — door tiles */}
+                <text x={ox + 4.5 * ts + 18} y={yScr(0) + 22} fontSize="6" fontWeight="800"
+                      textAnchor="middle" fill="#3a2611" fontFamily="Syne" letterSpacing="1.2">ENTRY</text>
+              </>
+            );
+          })()}
+
+          {/* === OTHER SHOPPERS === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            return SHOPPERS.map((s, i) => {
+              const sx = ox + s.x * ts + ts / 2;
+              const sy = oy + (GRID_H - 1 - s.y) * ts + ts / 2;
+              const wobble = Math.sin((stepCount + i * 0.7) * 0.8) * 1.2;
+              return (
+                <g key={i} transform={`translate(${sx}, ${sy + wobble})`}>
+                  <ellipse cx="0" cy="9" rx="6" ry="2" fill="#000" opacity="0.3" />
+                  <ellipse cx="0" cy="2" rx="6" ry="7" fill={s.shirt} />
+                  <circle cx="0" cy="-5" r="4.5" fill="#e9c39d" />
+                  <path d="M -4 -7 Q 0 -10 4 -7 L 4 -3 Q 0 -1 -4 -3 Z" fill={s.hair} />
+                </g>
+              );
+            });
+          })()}
+
+          {/* === NPC CHARACTERS (Pokémon-style — encounter triggered when pet bumps into them) === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            return npcs.map((npc) => {
+              const sx = ox + npc.x * ts + ts / 2;
+              const sy = oy + (GRID_H - 1 - npc.y) * ts + ts / 2;
+              const wobble = Math.sin((stepCount + npc.x * 0.5 + npc.y * 0.7) * 0.6) * 1.2;
+              const isActive = activeNpcId === npc.id;
+              const isHelper = npc.kind === 'helper';
+              const isTooFarHelper = tooFarItem === 'helper_' + npc.id;
+              const isHelperNearby = isHelper && [[-1,0],[1,0],[0,-1],[0,1]].some(
+                ([dx,dy]) => petX === npc.x+dx && petY === npc.y+dy
+              );
+              if (npc.done) return null;
+              return (
+                <g
+                  key={npc.id}
+                  transform={`translate(${sx}, ${sy + wobble})`}
+                  onClick={isHelper ? () => handleHelperMapClick(npc) : undefined}
+                  style={isHelper ? { cursor: 'pointer' } : undefined}
+                >
+                  {/* Awareness halo — green glow for helper, amber for stress NPCs */}
+                  <circle cx="0" cy="0" r="14" fill={isHelper ? 'url(#goalGlow)' : 'url(#encounterGlow)'}>
+                    <animate attributeName="r" values="12;16;12" dur={isHelper ? "2.4s" : "2s"} repeatCount="indefinite" />
+                  </circle>
+
+                  {/* Helper: stronger ring when pet is adjacent (ready to tap) */}
+                  {isHelperNearby && (
+                    <circle cx="0" cy="0" r="17" fill="none" stroke={T.green} strokeWidth="2.5">
+                      <animate attributeName="r" values="15;20;15" dur="0.8s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+
+                  {/* Too-far flash for helper */}
+                  {isTooFarHelper && (
+                    <>
+                      <circle cx="0" cy="0" r="18" fill={T.amber} opacity="0.4">
+                        <animate attributeName="r" values="14;22;14" dur="0.4s" repeatCount="3" />
+                      </circle>
+                      <g>
+                        <rect x="-28" y="-28" width="56" height="14" fill="rgba(5,11,20,0.9)" rx="4" />
+                        <text x="0" y="-18" fontSize="8" textAnchor="middle" fill={T.amber} fontWeight="800">Walk closer!</text>
+                      </g>
+                    </>
+                  )}
+
+                  {/* Shadow */}
+                  <ellipse cx="0" cy="11" rx="8" ry="2" fill="#000" opacity="0.35" />
+
+                  {/* Accessories — drawn behind body where appropriate */}
+                  {npc.look.accessory === 'ladder' && (
+                    <g>
+                      <line x1="-7" y1="-12" x2="-9" y2="10" stroke="#a87850" strokeWidth="1.5" />
+                      <line x1="7" y1="-12" x2="9" y2="10" stroke="#a87850" strokeWidth="1.5" />
+                      <line x1="-8" y1="-4" x2="8" y2="-4" stroke="#a87850" strokeWidth="1.2" />
+                      <line x1="-8.5" y1="3" x2="8.5" y2="3" stroke="#a87850" strokeWidth="1.2" />
+                    </g>
+                  )}
+                  {npc.look.accessory === 'trolley' && (
+                    <g transform="translate(8, 4)">
+                      <rect x="-2" y="-6" width="9" height="6" fill="none" stroke="#888" strokeWidth="1" />
+                      <line x1="-2" y1="-6" x2="-4" y2="-9" stroke="#888" strokeWidth="1" />
+                      <circle cx="-1" cy="2" r="1.2" fill="#222" />
+                      <circle cx="5" cy="2" r="1.2" fill="#222" />
+                      <rect x="-1" y="-5" width="3" height="3" fill="#fcbf49" />
+                      <rect x="3" y="-5" width="3" height="3" fill="#e63946" />
+                    </g>
+                  )}
+
+                  {/* Body */}
+                  <ellipse cx="0" cy="3" rx="6.5" ry="7.5" fill={npc.look.shirt} />
+                  {/* Apron over body for helper */}
+                  {npc.look.accessory === 'apron' && (
+                    <>
+                      <rect x="-4.5" y="-1" width="9" height="9" fill="#fff" opacity="0.85" rx="0.5" />
+                      <line x1="-4.5" y1="-1" x2="-7" y2="-3" stroke="#fff" strokeWidth="0.8" opacity="0.85" />
+                      <line x1="4.5" y1="-1" x2="7" y2="-3" stroke="#fff" strokeWidth="0.8" opacity="0.85" />
+                    </>
+                  )}
+                  {/* Arms */}
+                  <ellipse cx="-7" cy="2" rx="2" ry="4" fill={npc.look.shirt} />
+                  <ellipse cx="7" cy="2" rx="2" ry="4" fill={npc.look.shirt} />
+                  {/* Head */}
+                  <circle cx="0" cy="-5" r="5" fill={npc.look.skin} />
+                  {/* Hair */}
+                  <path d="M -5 -7 Q 0 -11 5 -7 L 5 -2 Q 0 -1 -5 -2 Z" fill={npc.look.hair} />
+
+                  {/* Held accessories */}
+                  {npc.look.accessory === 'mic' && (
+                    <g>
+                      <line x1="6" y1="-1" x2="9" y2="-7" stroke="#444" strokeWidth="1.4" />
+                      <ellipse cx="9.5" cy="-8" rx="2.2" ry="2.8" fill="#222" />
+                      <ellipse cx="9.5" cy="-9" rx="1.8" ry="1.4" fill="#666" />
+                    </g>
+                  )}
+                  {npc.look.accessory === 'phone' && (
+                    <g>
+                      <rect x="-3" y="-1" width="6" height="9" fill="#1d1d1d" rx="1" />
+                      <rect x="-2.2" y="-0.2" width="4.4" height="7.4" fill="#5fa8d3" rx="0.3" />
+                    </g>
+                  )}
+                  {npc.look.accessory === 'mop' && (
+                    <g>
+                      {/* Mop handle */}
+                      <line x1="7" y1="-8" x2="10" y2="12" stroke="#a87850" strokeWidth="1.8" />
+                      {/* Mop head */}
+                      <ellipse cx="10.5" cy="13" rx="4" ry="2" fill="#ade8f4" opacity="0.9" />
+                      <line x1="7" y1="11" x2="14" y2="13" stroke="#ade8f4" strokeWidth="1.2" />
+                      <line x1="8" y1="12" x2="14" y2="15" stroke="#ade8f4" strokeWidth="1.2" />
+                    </g>
+                  )}
+
+                  {/* Helper bubble (heart icon) — always present, shows they're a friendly resource */}
+                  {isHelper && (
+                    <g transform="translate(0, -16)">
+                      <circle cx="0" cy="0" r="6" fill="#fff" stroke="#06a77d" strokeWidth="1" />
+                      <text x="0" y="3" fontSize="8" textAnchor="middle">💚</text>
+                    </g>
+                  )}
+
+                  {/* Exclamation bubble for active stress NPC */}
+                  {isActive && (
+                    <g transform="translate(0, -16)">
+                      <circle cx="0" cy="0" r="6" fill="#fff" stroke="#222" strokeWidth="1" />
+                      <text x="0" y="3" fontSize="9" textAnchor="middle" fontWeight="800" fill="#e63946">!</text>
+                    </g>
+                  )}
+                </g>
+              );
+            });
+          })()}
+
+          {/* === SHOPPING LIST ITEM MARKERS — tap one to pick it up when pet is adjacent === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            return shoppingList.map((item) => {
+              const sx = ox + item.x * ts + ts / 2;
+              const sy = oy + (GRID_H - 1 - item.y) * ts + ts / 2;
+              const isCollected = collected.has(item.id);
+              const isHinted = hintItem === item.id;
+              const isTooFar = tooFarItem === item.id;
+              const adj = adjacentTilesFor(item);
+              const isNearby = adj.some(t => t.x === petX && t.y === petY);
+
+              if (isCollected) {
+                return (
+                  <g key={item.id} opacity="0.55">
+                    <circle cx={sx} cy={sy} r="11" fill={T.green} opacity="0.3" />
+                    <text x={sx} y={sy + 4} fontSize="12" textAnchor="middle">✓</text>
+                  </g>
+                );
+              }
+
+              return (
+                <g
+                  key={item.id}
+                  onClick={() => handleItemMapClick(item)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {/* Hint pulse (from helper worker) */}
+                  {isHinted && (
+                    <>
+                      <circle cx={sx} cy={sy} r="26" fill={T.amber} opacity="0.4">
+                        <animate attributeName="r" values="22;30;22" dur="0.9s" repeatCount="indefinite" />
+                      </circle>
+                      <circle cx={sx} cy={sy} r="20" fill="none" stroke={T.amber} strokeWidth="2">
+                        <animate attributeName="r" values="18;26;18" dur="0.9s" repeatCount="indefinite" />
+                      </circle>
+                    </>
+                  )}
+
+                  {/* Too-far flash — amber shake when tapped from across the shop */}
+                  {isTooFar && (
+                    <circle cx={sx} cy={sy} r="20" fill={T.amber} opacity="0.5">
+                      <animate attributeName="r" values="14;22;14" dur="0.4s" repeatCount="3" />
+                    </circle>
+                  )}
+
+                  {/* "Walk here" ring — gentle glow when pet is adjacent, ready to tap */}
+                  {isNearby && !isTooFar && (
+                    <circle cx={sx} cy={sy} r="16" fill="none" stroke={T.green} strokeWidth="2.5">
+                      <animate attributeName="r" values="14;19;14" dur="0.8s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+
+                  {/* Normal pulse (not nearby) */}
+                  {!isNearby && (
+                    <circle cx={sx} cy={sy} r="16" fill="url(#goalGlow)">
+                      <animate attributeName="r" values="14;18;14" dur="2.4s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+
+                  {/* The marker itself */}
+                  <circle cx={sx} cy={sy} r="12"
+                    fill={isNearby ? T.green : `${T.green}cc`}
+                    stroke={isNearby ? '#fff' : `${T.green}88`}
+                    strokeWidth={isNearby ? 2 : 1} />
+                  <text x={sx} y={sy + 5} fontSize="14" textAnchor="middle">{item.emoji}</text>
+
+                  {/* "Walk closer" label when tapped too far */}
+                  {isTooFar && (
+                    <g>
+                      <rect x={sx - 30} y={sy - 28} width={60} height={14} fill="rgba(5,11,20,0.9)" rx="4" />
+                      <text x={sx} y={sy - 18} fontSize="8" textAnchor="middle" fill={T.amber} fontWeight="800">
+                        Walk closer!
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            });
+          })()}
+
+          {/* === CHECKOUT GLOW (active when all items collected, before paying) === */}
+          {(() => {
+            const allDone = shoppingList.every(i => collected.has(i.id));
+            if (!allDone || paid) return null;
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            // Pulse over the checkout passage (cols 4-5, row 1)
+            const sx = ox + 4.5 * ts + ts / 2;
+            const sy = oy + (GRID_H - 1 - 1) * ts + ts / 2;
+            return (
+              <g>
+                <circle cx={sx} cy={sy} r="22" fill="url(#goalGlow)">
+                  <animate attributeName="r" values="20;28;20" dur="1.8s" repeatCount="indefinite" />
+                </circle>
+                <text x={sx} y={sy + 5} fontSize="16" textAnchor="middle">🛒</text>
+              </g>
+            );
+          })()}
+
+          {/* === EXIT GLOW (active after paying) === */}
+          {(() => {
+            if (!paid) return null;
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            // Pulse over the entry doors (cols 4-5, row 0)
+            const sx = ox + 4.5 * ts + ts / 2;
+            const sy = oy + (GRID_H - 1 - 0) * ts + ts / 2;
+            return (
+              <g>
+                <circle cx={sx} cy={sy} r="22" fill="url(#goalGlow)">
+                  <animate attributeName="r" values="20;28;20" dur="1.8s" repeatCount="indefinite" />
+                </circle>
+                <text x={sx} y={sy + 5} fontSize="16" textAnchor="middle">🚪</text>
+              </g>
+            );
+          })()}
+
+          {/* === PET === */}
+          {(() => {
+            const ts = 36;
+            const ox = 20;
+            const oy = 6;
+            const sx = ox + petX * ts + ts / 2;
+            const sy = oy + (GRID_H - 1 - petY) * ts + ts / 2;
+            const bobY = stepCount % 2 === 0 ? 0 : -2;
+            return (
+              <g style={{ transition: 'transform 0.18s ease-out' }}
+                 transform={`translate(${sx}, ${sy + bobY})`}>
+                <circle cx="0" cy="0" r="18" fill="url(#petGlow)" />
+                <ellipse cx="0" cy="10" rx="9" ry="3" fill="#000" opacity="0.35" />
+                <circle cx="0" cy="0" r="11" fill={T.teal} />
+                <circle cx="0" cy="0" r="11" fill="none" stroke={T.bg} strokeWidth="1.5" />
+                <text x="0" y="6" fontSize="18" textAnchor="middle">{pet.emoji}</text>
+              </g>
+            );
+          })()}
+
+          {/* === HUD overlay === */}
+          <g>
+            <rect x={5} y={5} width={148} height={18} fill="rgba(5,11,20,0.88)" rx="3" />
+            <text x={79} y={17} fontSize="9" textAnchor="middle" fill={T.teal} fontWeight="800" fontFamily="DM Sans" letterSpacing="0.5">
+              📍 {currentSection.name.toUpperCase()}
+            </text>
+          </g>
+        </svg>
+      </div>
+
+      {/* Just-collected toast */}
+      {justCollected && (
+        <div style={{
+          position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+          background: T.green, color: '#fff', padding: '10px 16px', borderRadius: 10,
+          fontWeight: 800, fontSize: 14, fontFamily: 'DM Sans',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.3)', zIndex: 100,
+          animation: 'fadeInOut 1.4s ease',
+        }}>
+          {justCollected.emoji} Got the {justCollected.name}!
+        </div>
+      )}
+
+      {/* Sound volume control */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, justifyContent: 'center' }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: 0.5 }}>SHOP SOUNDS</span>
+        {[
+          { v: 0,    icon: '🔇', label: 'Off'    },
+          { v: 0.25, icon: '🔉', label: 'Quiet'  },
+          { v: 0.55, icon: '🔊', label: 'Normal' },
+        ].map(({ v, icon, label }) => {
+          const active = Math.abs(ambientVolume - v) < 0.05;
+          return (
+            <button
+              key={v}
+              onClick={() => handleVolumeChange(v)}
+              title={label}
+              style={{
+                background: active ? T.card : 'transparent',
+                border: `1px solid ${active ? T.teal : T.borderStrong}`,
+                borderRadius: 8, padding: '4px 10px',
+                cursor: 'pointer', fontFamily: 'DM Sans',
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 13, color: active ? T.teal : T.muted,
+                fontWeight: active ? 800 : 500,
+                transition: 'all 0.15s',
+              }}
+            >
+              <span>{icon}</span>
+              <span style={{ fontSize: 10 }}>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Arrow pad — centred below the map */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 48px)', gap: 6 }}>
+          <div />
+          <button onClick={() => handleMove('forward')} style={{ background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: T.text }}>↑</button>
+          <div />
+          <button onClick={() => handleMove('left')} style={{ background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: T.text }}>←</button>
+          <button onClick={() => handleMove('back')} style={{ background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: T.text }}>↓</button>
+          <button onClick={() => handleMove('right')} style={{ background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: T.text }}>→</button>
+        </div>
+      </div>
+
+      {/* Encounter modal */}
+      {activeEnc && (
+        <EncounterModal
+          encounter={activeEnc}
+          result={encResult}
+          onChoice={handleChoice}
+          npc={npcs.find(n => n.id === activeNpcId)}
+        />
+      )}
+
+      {/* Shelf-pick modal */}
+      {activeShelf && (
+        <ShelfModal
+          shelf={activeShelf}
+          wrongPickId={shelfWrongPick}
+          onPick={handleShelfPick}
+          onLeave={handleShelfLeave}
+          isHard={isHard}
+          budgetLeft={budgetLeftCents}
+        />
+      )}
+
+      {/* Helper worker modal */}
+      {activeHelper && (
+        <HelperModal
+          helper={activeHelper}
+          restUsed={restUsed}
+          uncollectedItems={shoppingList.filter(i => !collected.has(i.id))}
+          onRest={handleHelperRest}
+          onHint={handleHelperHint}
+          onLeave={handleHelperLeave}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENCOUNTER MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function Calculator() {
+  const [open, setOpen] = useState(false);
+  const [showTips, setShowTips] = useState(false);
+  const [display, setDisplay] = useState('0');
+  const [stored, setStored] = useState(null);
+  const [op, setOp] = useState(null);
+  const [waiting, setWaiting] = useState(false);
+
+  const press = (key) => {
+    if (key === 'C') {
+      setDisplay('0'); setStored(null); setOp(null); setWaiting(false);
+      return;
+    }
+    if (key === '⌫') {
+      setDisplay(d => d.length <= 1 ? '0' : d.slice(0, -1));
+      return;
+    }
+    if (key === '.') {
+      if (display.includes('.')) return;
+      setDisplay(d => d + '.');
+      return;
+    }
+    if ('0123456789'.includes(key)) {
+      if (waiting) {
+        setDisplay(key);
+        setWaiting(false);
+      } else {
+        setDisplay(d => d === '0' ? key : d + key);
+      }
+      return;
+    }
+    if (['+', '−', '×', '÷'].includes(key)) {
+      const cur = parseFloat(display);
+      if (stored !== null && op && !waiting) {
+        const result = compute(stored, cur, op);
+        setDisplay(String(result));
+        setStored(result);
+      } else {
+        setStored(cur);
+      }
+      setOp(key);
+      setWaiting(true);
+      return;
+    }
+    if (key === '=') {
+      const cur = parseFloat(display);
+      if (stored !== null && op) {
+        const result = compute(stored, cur, op);
+        setDisplay(String(Math.round(result * 100) / 100));
+        setStored(null);
+        setOp(null);
+        setWaiting(true);
+      }
+      return;
+    }
+  };
+
+  const compute = (a, b, oper) => {
+    switch (oper) {
+      case '+': return a + b;
+      case '−': return a - b;
+      case '×': return a * b;
+      case '÷': return b !== 0 ? a / b : 0;
+      default: return b;
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{
+        width: '100%', padding: '10px 12px',
+        background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10,
+        color: T.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      }}>
+        <span style={{ fontSize: 16 }}>🧮</span>
+        <span>Open calculator</span>
+      </button>
+    );
+  }
+
+  const keys = [
+    ['C', '⌫', '÷', '×'],
+    ['7', '8', '9', '−'],
+    ['4', '5', '6', '+'],
+    ['1', '2', '3', '='],
+    ['0', '.'],
+  ];
+
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10,
+      padding: 10, fontFamily: 'DM Sans',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: T.muted, letterSpacing: 1 }}>🧮 CALCULATOR</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setShowTips(t => !t)} style={{
+            background: showTips ? T.amber : 'transparent',
+            border: `1px solid ${showTips ? T.amber : T.borderStrong}`,
+            borderRadius: 6, color: showTips ? T.bg : T.muted,
+            fontSize: 10, fontWeight: 800, cursor: 'pointer', padding: '2px 7px',
+          }}>
+            💡 tips
+          </button>
+          <button onClick={() => setOpen(false)} style={{
+            background: 'transparent', border: 'none', color: T.muted, fontSize: 11, cursor: 'pointer', fontWeight: 700,
+          }}>close</button>
+        </div>
+      </div>
+
+      {/* Tips panel */}
+      {showTips && (
+        <div style={{
+          background: T.surface, border: `1px solid ${T.amber}`, borderRadius: 8,
+          padding: 10, marginBottom: 10, fontSize: 11, lineHeight: 1.6,
+        }}>
+          <div style={{ fontWeight: 800, color: T.amber, marginBottom: 6, fontSize: 11, letterSpacing: 0.5 }}>
+            HOW TO USE THIS CALCULATOR
+          </div>
+          <div style={{ color: T.textDim, marginBottom: 8 }}>
+            <strong style={{ color: T.text }}>Step 1 — Add up your items:</strong><br />
+            Type the first price → tap <span style={{ color: T.teal, fontWeight: 800 }}>+</span> → type next price → tap <span style={{ color: T.teal, fontWeight: 800 }}>+</span> → keep going → tap <span style={{ color: T.teal, fontWeight: 800 }}>=</span><br />
+            <span style={{ color: T.muted, fontSize: 10 }}>e.g. 3.20 + 4.80 + 5.20 = 13.20</span>
+          </div>
+          <div style={{ color: T.textDim, marginBottom: 8 }}>
+            <strong style={{ color: T.text }}>Step 2 — Pick the right note:</strong><br />
+            Which note is big enough to cover the total?<br />
+            <span style={{ color: T.muted, fontSize: 10 }}>If total is $8.80, you need a $10 note (not $5 — too small!)</span>
+          </div>
+          <div style={{ color: T.textDim }}>
+            <strong style={{ color: T.text }}>Step 3 — Work out change:</strong><br />
+            Type the note → tap <span style={{ color: T.teal, fontWeight: 800 }}>−</span> → type the total → tap <span style={{ color: T.teal, fontWeight: 800 }}>=</span><br />
+            <span style={{ color: T.muted, fontSize: 10 }}>e.g. 10 − 8.80 = 1.20 ← that's your change</span>
+          </div>
+          <div style={{ marginTop: 8, padding: '6px 8px', background: `${T.amber}22`, borderRadius: 6, color: T.amber, fontSize: 10, fontWeight: 700 }}>
+            💡 Tip: tap C to clear and start again if you make a mistake
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        background: '#0a0f1a', color: T.teal, padding: '10px 12px', borderRadius: 6,
+        fontFamily: 'monospace', fontSize: 22, fontWeight: 800, textAlign: 'right',
+        marginBottom: 8, minHeight: 36, overflow: 'hidden',
+      }}>
+        {op && <span style={{ color: T.muted, fontSize: 14, marginRight: 8 }}>{stored} {op}</span>}
+        {display}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+        {keys.flat().map((k, i) => {
+          const isOp = ['÷', '×', '−', '+', '='].includes(k);
+          const isClear = k === 'C' || k === '⌫';
+          const isWide = k === '0';
+          return (
+            <button
+              key={i}
+              onClick={() => press(k)}
+              style={{
+                gridColumn: isWide ? 'span 2' : 'auto',
+                background: isOp ? T.teal : isClear ? T.amber : T.surface,
+                color: isOp || isClear ? T.bg : T.text,
+                border: 'none', borderRadius: 6, padding: '10px 0',
+                fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'DM Sans',
+              }}
+            >
+              {k}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HelperModal({ helper, restUsed, uncollectedItems, onRest, onHint, onLeave }) {
+  const [askingForItem, setAskingForItem] = React.useState(false);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: T.surface, border: `2px solid ${T.green}`, borderRadius: 16, padding: 20, maxWidth: 420, width: '100%', fontFamily: 'DM Sans' }}>
+        {/* NPC + speech bubble */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
+          <div style={{ flexShrink: 0 }}>
+            <NPCBig look={helper.look} />
+          </div>
+          <div style={{ flex: 1, position: 'relative', background: T.card, borderRadius: 12, padding: 12, border: `1px solid ${T.green}` }}>
+            <div style={{ position: 'absolute', left: -8, bottom: 16, width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderRight: `8px solid ${T.green}` }} />
+            <div style={{ position: 'absolute', left: -6, bottom: 16, width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderRight: `8px solid ${T.card}` }} />
+            <div style={{ fontSize: 9, fontWeight: 800, color: T.green, letterSpacing: 1, marginBottom: 4 }}>STORE WORKER</div>
+            <h3 style={{ color: T.text, fontSize: 14, fontFamily: 'Syne', fontWeight: 800, margin: '0 0 4px' }}>
+              {askingForItem ? '"What item are you looking for?"' : '"Hey! Can I help you with anything?"'}
+            </h3>
+            <p style={{ color: T.textDim, fontSize: 11, margin: 0, lineHeight: 1.4 }}>
+              {askingForItem ? "Tap the item and I'll point to it on the map." : "The worker smiles and waits patiently."}
+            </p>
+          </div>
+        </div>
+
+        {askingForItem ? (
+          <>
+            {uncollectedItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 12, color: T.muted, fontSize: 12 }}>
+                You've already found everything! 🎉
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 10 }}>
+                {uncollectedItems.map(item => (
+                  <button key={item.id} onClick={() => onHint(item)} style={{
+                    background: T.card, border: `1.5px solid ${T.green}`, borderRadius: 12,
+                    padding: '12px 10px', cursor: 'pointer', fontFamily: 'DM Sans',
+                    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+                    transition: 'all 0.15s',
+                  }}>
+                    <span style={{ fontSize: 24 }}>{item.emoji}</span>
+                    <div>
+                      <div style={{ color: T.text, fontSize: 12, fontWeight: 700 }}>{item.name}</div>
+                      <div style={{ color: T.muted, fontSize: 10 }}>{item.dept}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setAskingForItem(false)} style={{
+              background: 'transparent', border: 'none', color: T.muted,
+              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans',
+              width: '100%', padding: 6, textAlign: 'center',
+            }}>← Go back</button>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button onClick={() => setAskingForItem(true)} disabled={uncollectedItems.length === 0} style={{
+              background: T.card, border: `1px solid ${uncollectedItems.length > 0 ? T.green : T.borderStrong}`,
+              borderRadius: 10, padding: '10px 12px',
+              cursor: uncollectedItems.length > 0 ? 'pointer' : 'not-allowed',
+              textAlign: 'left', fontFamily: 'DM Sans', opacity: uncollectedItems.length === 0 ? 0.5 : 1,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>🗺️</span>
+                <div>
+                  <div style={{ color: T.text, fontSize: 12, fontWeight: 700 }}>"I'm looking for something on my list"</div>
+                  <div style={{ color: T.muted, fontSize: 10, marginTop: 2 }}>You choose the item — worker highlights it on the map.</div>
+                </div>
+              </div>
+            </button>
+
+            <button onClick={onRest} disabled={restUsed} style={{
+              background: T.card, border: `1px solid ${restUsed ? T.borderStrong : T.teal}`,
+              borderRadius: 10, padding: '10px 12px',
+              cursor: restUsed ? 'not-allowed' : 'pointer',
+              textAlign: 'left', fontFamily: 'DM Sans', opacity: restUsed ? 0.5 : 1,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>🌿</span>
+                <div>
+                  <div style={{ color: T.text, fontSize: 12, fontWeight: 700 }}>"I just need a moment" {restUsed && "(used)"}</div>
+                  <div style={{ color: T.muted, fontSize: 10, marginTop: 2 }}>{restUsed ? "Already rested this trip." : "Worker gives you space. Patience +1."}</div>
+                </div>
+              </div>
+            </button>
+
+            <button onClick={onLeave} style={{
+              background: 'transparent', border: `1px solid ${T.borderStrong}`,
+              borderRadius: 10, padding: '8px 12px', cursor: 'pointer',
+              fontFamily: 'DM Sans', color: T.muted, fontSize: 11, fontWeight: 700,
+            }}>
+              "I'm okay, thanks"
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function ShelfModal({ shelf, wrongPickId, onPick, onLeave, isHard, budgetLeft }) {
+  // shelf = { item, options }
+  const dept = shelf.item.dept;
+  const overBudget = isHard && shelf.item.cents > budgetLeft;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: T.surface, border: `2px solid ${T.teal}`, borderRadius: 16, padding: 20, maxWidth: 440, width: '100%', fontFamily: 'DM Sans' }}>
+        {/* Header — what dept and what the pet needs */}
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: T.muted, letterSpacing: 1.5, marginBottom: 4 }}>
+            {dept.toUpperCase()}
+          </div>
+          <h3 style={{ color: T.text, fontSize: 16, fontFamily: 'Syne', fontWeight: 800, margin: 0 }}>
+            Pet needs: <span style={{ color: T.teal }}>{shelf.item.emoji} {shelf.item.name}</span>
+          </h3>
+          <p style={{ color: T.muted, fontSize: 11, margin: '4px 0 0' }}>
+            Pick the right one off the shelf
+          </p>
+        </div>
+
+        {/* Hard mode: budget remaining bar */}
+        {isHard && (
+          <div style={{
+            background: T.card, borderRadius: 8, padding: '8px 12px',
+            border: `1px solid ${budgetLeft < 500 ? T.amber : T.borderStrong}`,
+            marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: T.muted, letterSpacing: 1 }}>BUDGET LEFT</div>
+            <div style={{ fontSize: 16, fontFamily: 'Syne', fontWeight: 800, color: budgetLeft < 500 ? T.amber : T.green }}>
+              {formatPrice(budgetLeft)}
+            </div>
+          </div>
+        )}
+
+        {/* Shelf graphic with items */}
+        <div style={{
+          background: 'linear-gradient(180deg, #c9a876 0%, #a87850 100%)',
+          borderRadius: 10, padding: '20px 12px 14px',
+          border: `2px solid #6b5541`,
+          marginBottom: 14,
+          position: 'relative',
+        }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 6, background: '#6b5541', borderRadius: '8px 8px 0 0' }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-end', gap: 8 }}>
+            {shelf.options.map((opt) => {
+              const isWrong = wrongPickId === opt.variantId;
+              const optOverBudget = isHard && opt.cents > budgetLeft;
+              return (
+                <button
+                  key={opt.variantId}
+                  onClick={() => onPick(opt)}
+                  style={{
+                    background: '#fff8ec',
+                    border: `2px solid ${isWrong ? T.red : '#6b5541'}`,
+                    borderRadius: 10,
+                    padding: '10px 8px',
+                    cursor: 'pointer',
+                    fontFamily: 'DM Sans',
+                    flex: 1,
+                    minWidth: 0,
+                    textAlign: 'center',
+                    transition: 'all 0.15s',
+                    animation: isWrong ? 'shake 0.5s ease' : 'none',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={(e) => { if (!isWrong) e.currentTarget.style.borderColor = T.teal; }}
+                  onMouseLeave={(e) => { if (!isWrong) e.currentTarget.style.borderColor = '#6b5541'; }}
+                >
+                  <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 4 }}>{opt.emoji}</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#3a2611', lineHeight: 1.2 }}>{opt.name}</div>
+                  {/* Brand label for variants in hard mode */}
+                  {opt.brand && (
+                    <div style={{
+                      fontSize: 9, fontWeight: 700, color: opt.brand === 'Save' ? '#06a77d' : '#888',
+                      marginTop: 2, letterSpacing: 0.3,
+                    }}>
+                      {opt.brand === 'Save' ? '💚 Save Brand' : 'Standard'}
+                    </div>
+                  )}
+                  {isHard && (
+                    <div style={{
+                      fontSize: 13, fontWeight: 800,
+                      color: optOverBudget ? T.red : '#3a2611',
+                      marginTop: 4, fontFamily: 'monospace',
+                    }}>
+                      {formatPrice(opt.cents)}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ height: 4, background: '#6b5541', borderRadius: 2, marginTop: 8 }} />
+        </div>
+
+        {wrongPickId && (
+          <div style={{
+            background: `${T.amber}22`, border: `1px solid ${T.amber}`,
+            color: T.amber, padding: 8, borderRadius: 8, fontSize: 11,
+            textAlign: 'center', fontWeight: 700, marginBottom: 10,
+          }}>
+            Not that one — look for {shelf.item.emoji} {shelf.item.name}
+            {isHard && shelf.item.cents > budgetLeft && ` (also: this is over budget!)`}
+          </div>
+        )}
+
+        {isHard && overBudget && !wrongPickId && (
+          <div style={{
+            background: `${T.red}22`, border: `1px solid ${T.red}`,
+            color: T.red, padding: 8, borderRadius: 8, fontSize: 11,
+            textAlign: 'center', fontWeight: 700, marginBottom: 10,
+          }}>
+            ⚠️ {shelf.item.name} is over your budget — step back and skip it, or pick a cheaper item next time
+          </div>
+        )}
+
+        <button onClick={onLeave} style={{
+          background: 'transparent', border: 'none', color: T.muted,
+          fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans',
+          width: '100%', padding: 6,
+        }}>
+          ← Step back, I'll come here later
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NPCBig({ look }) {
+  // Larger version of the NPC sprite for the modal
+  return (
+    <svg viewBox="-30 -40 60 70" style={{ width: 110, height: 130 }}>
+      {look.accessory === 'ladder' && (
+        <g>
+          <line x1="-14" y1="-30" x2="-18" y2="20" stroke="#a87850" strokeWidth="3" />
+          <line x1="14" y1="-30" x2="18" y2="20" stroke="#a87850" strokeWidth="3" />
+          <line x1="-16" y1="-10" x2="16" y2="-10" stroke="#a87850" strokeWidth="2.4" />
+          <line x1="-17" y1="5" x2="17" y2="5" stroke="#a87850" strokeWidth="2.4" />
+        </g>
+      )}
+      {look.accessory === 'trolley' && (
+        <g transform="translate(16, 8)">
+          <rect x="-4" y="-12" width="18" height="12" fill="none" stroke="#888" strokeWidth="2" />
+          <line x1="-4" y1="-12" x2="-8" y2="-18" stroke="#888" strokeWidth="2" />
+          <circle cx="-2" cy="4" r="2.4" fill="#222" />
+          <circle cx="10" cy="4" r="2.4" fill="#222" />
+          <rect x="-2" y="-10" width="6" height="6" fill="#fcbf49" />
+          <rect x="6" y="-10" width="6" height="6" fill="#e63946" />
+        </g>
+      )}
+      <ellipse cx="0" cy="22" rx="16" ry="3" fill="#000" opacity="0.3" />
+      <ellipse cx="0" cy="6" rx="13" ry="15" fill={look.shirt} />
+      <ellipse cx="-14" cy="4" rx="4" ry="8" fill={look.shirt} />
+      <ellipse cx="14" cy="4" rx="4" ry="8" fill={look.shirt} />
+      <circle cx="0" cy="-10" r="10" fill={look.skin} />
+      <path d="M -10 -14 Q 0 -22 10 -14 L 10 -4 Q 0 -2 -10 -4 Z" fill={look.hair} />
+      {/* Simple face */}
+      <circle cx="-3.5" cy="-10" r="0.9" fill="#222" />
+      <circle cx="3.5" cy="-10" r="0.9" fill="#222" />
+      <path d="M -3 -6 Q 0 -4 3 -6" stroke="#222" strokeWidth="0.8" fill="none" />
+      {look.accessory === 'mic' && (
+        <g>
+          <line x1="12" y1="-2" x2="18" y2="-14" stroke="#444" strokeWidth="2.8" />
+          <ellipse cx="19" cy="-16" rx="4.4" ry="5.6" fill="#222" />
+          <ellipse cx="19" cy="-18" rx="3.6" ry="2.8" fill="#666" />
+        </g>
+      )}
+      {look.accessory === 'phone' && (
+        <g>
+          <rect x="-6" y="-2" width="12" height="18" fill="#1d1d1d" rx="2" />
+          <rect x="-4.4" y="-0.4" width="8.8" height="14.8" fill="#5fa8d3" rx="0.6" />
+        </g>
+      )}
+      {look.accessory === 'mop' && (
+        <g>
+          <line x1="14" y1="-16" x2="20" y2="24" stroke="#a87850" strokeWidth="3.6" />
+          <ellipse cx="21" cy="26" rx="8" ry="4" fill="#ade8f4" opacity="0.9" />
+          <line x1="14" y1="22" x2="28" y2="26" stroke="#ade8f4" strokeWidth="2.4" />
+          <line x1="16" y1="24" x2="28" y2="30" stroke="#ade8f4" strokeWidth="2.4" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function EncounterModal({ encounter, result, onChoice, npc }) {
+  const typeColor = { regulation: T.teal, escalation: T.amber, social: T.purple, 'body-check': T.blue }[encounter.type];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: T.surface, border: `2px solid ${typeColor}`, borderRadius: 16, padding: 20, maxWidth: 420, width: '100%', fontFamily: 'DM Sans' }}>
+        {!result ? (
+          <>
+            {/* Pokémon-style intro: NPC sprite with speech bubble */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 14 }}>
+              {npc && (
+                <div style={{ flexShrink: 0 }}>
+                  <NPCBig look={npc.look} />
+                </div>
+              )}
+              <div style={{ flex: 1, position: 'relative', background: T.card, borderRadius: 12, padding: 12, border: `1px solid ${typeColor}` }}>
+                {/* Speech bubble tail pointing left at NPC */}
+                <div style={{ position: 'absolute', left: -8, bottom: 16, width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderRight: `8px solid ${typeColor}` }} />
+                <div style={{ position: 'absolute', left: -6, bottom: 16, width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderRight: `8px solid ${T.card}` }} />
+                <h3 style={{ color: T.text, fontSize: 15, fontFamily: 'Syne', fontWeight: 800, margin: 0 }}>{encounter.title}</h3>
+                <p style={{ color: T.textDim, fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{encounter.desc}</p>
+              </div>
+            </div>
+            <div style={{ color: T.muted, fontSize: 10, fontWeight: 800, letterSpacing: 1, marginBottom: 6, textAlign: 'center' }}>
+              HOW DOES PET RESPOND?
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {encounter.choices.map((choice, i) => (
+                <button key={i} onClick={() => onChoice(choice)} style={{
+                  background: T.card, border: `1px solid ${T.borderStrong}`, borderRadius: 10,
+                  padding: '10px 12px', cursor: 'pointer', textAlign: 'left', fontFamily: 'DM Sans',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = typeColor}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = T.borderStrong}
+                >
+                  <div style={{ color: T.text, fontSize: 12, fontWeight: 700 }}>{choice.text}</div>
+                  <div style={{ color: T.muted, fontSize: 10, marginTop: 2 }}>{choice.explanation}</div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>{result.choice.delta < 0 ? '✓' : result.choice.delta === 0 ? '→' : '⚠️'}</div>
+            <div style={{ color: T.text, fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{result.choice.text}</div>
+            <div style={{ color: T.textDim, fontSize: 11, marginBottom: 12 }}>{result.choice.explanation}</div>
+            <div style={{ background: T.card, borderRadius: 10, padding: 10, display: 'inline-block' }}>
+              <div style={{ color: T.muted, fontSize: 9, fontWeight: 700, marginBottom: 4 }}>FEELING NOW</div>
+              <div style={{ fontSize: 20, fontFamily: 'Syne', fontWeight: 800, color: [T.green, T.teal, T.amber, '#FF8C42', T.red][result.newFeeling - 1] }}>
+                {result.newFeeling}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// ─── SHOPPING GAME KEYFRAMES ────────────────────────────────────────────────
+function ShoppingGameStyles() {
+  return (
+    <style>{`
+      @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @keyframes fadeInOut { 0% { opacity: 0; transform: translate(-50%, -10px); } 15% { opacity: 1; transform: translate(-50%, 0); } 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+      @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+      @keyframes pulse { 0%, 100% { box-shadow: 0 0 12px rgba(0,167,125,0.4); } 50% { box-shadow: 0 0 24px rgba(0,167,125,0.7); } }
+    `}</style>
+  );
+}
+
+// ─── SHOPPING GAME EMBEDDED ACTIVITY ────────────────────────────────────────
+function ShoppingGameActivity({ onFinish }) {
+  const [screen, setScreen] = useState('picker');
+  const [petId,  setPetId]  = useState('dragon');
+  const [difficulty, setDifficulty] = useState('easy');
+
+  const handleBack = (result) => {
+    if (result && result.tickets > 0) {
+      onFinish({ gameId: 'shopping_run', tickets: result.tickets });
+    } else {
+      onFinish({ gameId: 'shopping_run', tickets: 0 });
+    }
+  };
+
+  return (
+    <div style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
+      <ShoppingGameStyles />
+      {screen === 'picker' && (
+        <PetPicker onStart={(pet, diff) => { setPetId(pet); setDifficulty(diff); setScreen('departure'); }} />
+      )}
+      {screen === 'departure' && (
+        <DepartureSequence petId={petId} onArrived={() => setScreen('shop')} />
+      )}
+      {screen === 'shop' && (
+        <FirstPersonShop petId={petId} difficulty={difficulty} onBack={handleBack} />
+      )}
+    </div>
+  );
+}
+
+
 // ─── LEARN SCREEN ────────────────────────────────────────────────────────────
 function LearnScreen({ user, setUser }) {
   const [activeModule,   setActiveModule]   = useState(null);
@@ -10419,6 +13120,7 @@ function LearnScreen({ user, setUser }) {
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeActivity === 'set'   && <ClockGame_Set   petEmoji={petEmoji} onFinish={handleActivityFinish} />}
+          {activeActivity === 'shopping_run' && <ShoppingGameActivity onFinish={handleActivityFinish} />}
           {activeActivity === 'match' && <ClockGame_Match                     onFinish={handleActivityFinish} />}
           {activeActivity === 'race'  && <ClockGame_Race  petEmoji={petEmoji} onFinish={handleActivityFinish} />}
           {activeActivity === 'build' && <ClockGame_Build petEmoji={petEmoji} onFinish={handleActivityFinish} />}
