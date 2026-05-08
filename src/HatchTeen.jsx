@@ -4889,15 +4889,17 @@ function GroomScene({ user, onComplete }) {
         })}
       </div>
 
-      {/* Pet in the bathtub */}
+      {/* Pet in the bathtub — bottom-anchored so it always sits in the tub
+          regardless of aspect ratio (top:% varied with the SVG's slice scaling
+          and put the pet's head above the tub rim on tall phones). */}
       <div style={{
-        position: 'absolute', top: '52%', left: '50%',
-        transform: 'translate(-50%, -50%)',
+        position: 'absolute', bottom: '24%', left: '50%',
+        transform: 'translate(-50%, 0)',
         pointerEvents: 'none',
         zIndex: 3,
       }}>
         <AnimalPet type={user.petType} color={user.petColor}
-                   mood={done ? 'happy' : (scrubbing ? 'happy' : 'awake')} size={200}
+                   mood={done ? 'happy' : (scrubbing ? 'happy' : 'awake')} size={170}
                    variant={user.petVariant || 'cute'} />
       </div>
 
@@ -8257,11 +8259,14 @@ function HatchingOverlay({ petType, petColor, petName, onDone, isFriend = false,
 // ────────────────────────────────────────────────────────────────────────────
 function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
   const [step, setStep] = useState(0);
-  const [category, setCategory] = useState(null);
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(null);
+  const [whyAnchor, setWhyAnchor] = useState(null);
+  const [why, setWhy] = useState('');
   const [obstacles, setObstacles] = useState([]);
   const [customObstacle, setCustomObstacle] = useState('');
-  const [goalSteps, setGoalSteps] = useState([{ id: 's_' + Date.now(), text: '', daily: false }]);
+  const [firstStep, setFirstStep] = useState('');
+  const [firstStepIsDaily, setFirstStepIsDaily] = useState(false);
   const [friendType, setFriendType] = useState(null);
   const [friendColor, setFriendColor] = useState(null);
   const [friendIsMystery, setFriendIsMystery] = useState(false);
@@ -8272,18 +8277,6 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
 
   function toggleObstacle(id) {
     setObstacles(o => o.includes(id) ? o.filter(x => x !== id) : [...o, id]);
-  }
-
-  function addGoalStep() {
-    setGoalSteps(prev => [...prev, { id: 's_' + Date.now() + '_' + prev.length, text: '', daily: false }]);
-  }
-
-  function removeGoalStep(id) {
-    setGoalSteps(prev => prev.filter(s => s.id !== id));
-  }
-
-  function updateGoalStep(id, field, value) {
-    setGoalSteps(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
   }
 
   function selectFriendAnimal(id) {
@@ -8315,15 +8308,14 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       ...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean),
       ...(customObstacle.trim() ? [customObstacle.trim()] : []),
     ];
-    const filledSteps = goalSteps
-      .filter(s => s.text.trim().length > 0)
-      .map(s => ({ id: s.id, text: s.text.trim(), done: false, daily: s.daily || undefined }));
     const newGoal = {
       id: 'g_' + Date.now(),
       title: title.trim(),
       category,
+      whyAnchor,
+      why: why.trim(),
       obstacles: allObstacles,
-      steps: filledSteps.length > 0 ? filledSteps : [{ id: 's_' + Date.now(), text: 'First step', done: false }],
+      steps: [{ id: 's_' + Date.now(), text: firstStep.trim(), done: false, daily: firstStepIsDaily || undefined }],
       completed: false,
       createdAt: Date.now(),
       friendPetType: finalFriendType,
@@ -8337,6 +8329,7 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
     await storageSet('user:' + user.username, updated);
 
     if (isFirstGoal) {
+      // Show hatching animation — teen watches their pet hatch
       setSavedGoalId(newGoal.id);
       setShowHatching(true);
     } else {
@@ -8345,12 +8338,14 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
   }
 
   async function handleHatchingDone() {
+    // Mark pet as hatched, award the hatch bonus tickets
     const hatchedUpdate = { ...user, hatched: true, tickets: (user.tickets || 0) + 2 };
     setUser(hatchedUpdate);
     await storageSet('user:' + user.username, hatchedUpdate);
     onClose(savedGoalId);
   }
 
+  // Show hatching overlay for first goal
   if (showHatching) {
     return (
       <HatchingOverlay
@@ -8364,31 +8359,18 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
     );
   }
 
-  // ── Step builder helpers ──────────────────────────────────────────────────
-  const filledStepCount = goalSteps.filter(s => s.text.trim().length > 0).length;
-
-  const stepTypeBtn = (stepId, isDaily, label, emoji, color) => (
-    <button
-      onClick={() => updateGoalStep(stepId, 'daily', isDaily)}
-      style={{
-        flex: 1, padding: '8px 6px', borderRadius: 10,
-        border: `1.5px solid ${goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? color : T.border}`,
-        background: goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? `${color}1a` : T.surface,
-        color: goalSteps.find(s=>s.id===stepId)?.daily === isDaily ? color : T.muted,
-        fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans',
-        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-        transition: 'all 0.15s',
-      }}
-    >
-      <span>{emoji}</span>{label}
-    </button>
-  );
-
   const steps = [
-    // ── Step 0: Category ──────────────────────────────────────────────────
+    {
+      title: 'What do you want to do?',
+      sub: 'Make it concrete — something someone could see you doing.',
+      example: 'e.g. "Walk into the cafe and order a coffee"',
+      content: <textarea value={title} onChange={e => setTitle(e.target.value)} placeholder="My goal is..." rows={3} style={{ ...inputStyle, resize: 'none' }} />,
+      canNext: title.trim().length > 2,
+    },
     {
       title: 'What kind of goal is this?',
-      sub: 'Pick the one that fits best.',
+      sub: 'Helps Hatch suggest the right scenarios and skills later. Optional — pick one or skip.',
+      example: '',
       content: (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {GOAL_CATEGORIES.map(c => {
@@ -8404,11 +8386,17 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 22 }}>{c.emoji}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans', color: active ? T.teal : T.text }}>
+                  <span style={{
+                    fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans',
+                    color: active ? T.teal : T.text,
+                  }}>
                     {c.label}
                   </span>
                 </div>
-                <span style={{ fontSize: 11, fontFamily: 'DM Sans', color: T.muted, lineHeight: 1.3 }}>
+                <span style={{
+                  fontSize: 11, fontFamily: 'DM Sans', color: T.muted,
+                  lineHeight: 1.3,
+                }}>
                   {c.sub}
                 </span>
               </button>
@@ -8416,44 +8404,52 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
           })}
         </div>
       ),
-      canNext: !!category,
-      canSkip: true,
+      canNext: true,
     },
-    // ── Step 1: Goal name ─────────────────────────────────────────────────
     {
-      title: 'Name your goal',
-      sub: 'Keep it short and clear — something you can picture doing.',
-      example: 'e.g. "Empty the dishwasher" or "Go to the shops alone"',
+      title: 'Why does it matter?',
+      sub: 'Tap whatever fits. You can add more in your own words if you want — or just pick one and move on.',
+      example: '',
       content: (
         <div>
-          <textarea
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="My goal is..."
-            rows={3}
-            style={{ ...inputStyle, resize: 'none', marginBottom: 16 }}
-          />
-          <div style={{
-            background: T.surface, borderRadius: 12,
-            padding: '12px 14px', border: `1px solid ${T.border}`,
-          }}>
-            <div style={{ ...lblStyle, marginBottom: 6 }}>💡 Good goal names are...</div>
-            <div style={{ fontSize: 12, fontFamily: 'DM Sans', color: T.muted, lineHeight: 1.8 }}>
-              ✅ Clear — you know when you've done it<br />
-              ✅ Yours — something that matters to you<br />
-              ✅ Doable — challenging but possible
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {WHY_ANCHORS.map(a => {
+              const active = whyAnchor === a.id;
+              return (
+                <button key={a.id} onClick={() => setWhyAnchor(a.id)} style={{
+                  background: active ? `${T.teal}1f` : T.surface,
+                  border: active ? `1.5px solid ${T.teal}` : `1px solid ${T.border}`,
+                  borderRadius: 12, padding: '14px 14px',
+                  color: active ? T.teal : T.textDim,
+                  fontSize: 14, fontWeight: 500, fontFamily: 'DM Sans',
+                  textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
+                }}>
+                  <span style={{ fontSize: 20 }}>{a.emoji}</span>
+                  <span>{a.label}</span>
+                </button>
+              );
+            })}
           </div>
+          {whyAnchor && (
+            <textarea
+              value={why}
+              onChange={e => setWhy(e.target.value)}
+              placeholder={whyAnchor === 'free_text' ? 'Tell me more...' : 'Want to add more? (optional)'}
+              rows={3}
+              style={{ ...inputStyle, resize: 'none', marginBottom: 0 }}
+            />
+          )}
         </div>
       ),
-      canNext: title.trim().length > 2,
+      canNext: whyAnchor !== null && (whyAnchor !== 'free_text' || why.trim().length > 2),
     },
-    // ── Step 2: What could make this harder ───────────────────────────────
     {
-      title: 'What could make this harder?',
+      title: 'What might get in the way?',
       sub: user?.sensoryProfile
-        ? 'Based on what you told Hatch about yourself — tap anything that fits.'
-        : 'Knowing ahead of time means you can plan around it.',
+        ? "Based on what you told Hatch about yourself — tap any that apply for this goal."
+        : 'Knowing this ahead of time means you can plan around it.',
+      example: '',
       content: (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
@@ -8475,91 +8471,51 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               );
             })}
           </div>
-          <input
-            value={customObstacle}
-            onChange={e => setCustomObstacle(e.target.value)}
-            placeholder="Something else? Add it here..."
-            style={inputStyle}
-          />
+          <input value={customObstacle} onChange={e => setCustomObstacle(e.target.value)} placeholder="Something else? Add it here..." style={inputStyle} />
         </div>
       ),
-      canNext: true,
-      canSkip: true,
+      canNext: obstacles.length > 0 || customObstacle.trim().length > 0,
     },
-    // ── Step 3: Baby steps ────────────────────────────────────────────────
     {
-      title: 'Baby steps',
-      sub: `Break "${title || 'your goal'}" into small steps. Say if each one is daily or once-off.`,
+      title: 'Your first tiny step',
+      sub: 'Small enough you could do it today. Big steps come later.',
+      example: 'e.g. "Walk past the cafe once" or "Look up the menu online"',
       content: (
         <div>
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'DM Sans', color: T.teal }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: T.teal }} />
-              Daily habit
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'DM Sans', color: T.purple }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: T.purple }} />
-              Once-off
-            </div>
+          <textarea value={firstStep} onChange={e => setFirstStep(e.target.value)} placeholder="My first tiny step is..." rows={3} style={{ ...inputStyle, resize: 'none', marginBottom: 14 }} />
+          {/* Daily or once-off */}
+          <div style={{ fontSize: 12, fontFamily: 'DM Sans', fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+            Is this step something you'll do regularly?
           </div>
-
-          {goalSteps.map((s, i) => (
-            <div key={s.id} style={{
-              background: T.surface, borderRadius: 12,
-              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
-              padding: '12px 12px', marginBottom: 10,
-              border: `1px solid ${T.border}`,
-              borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button onClick={() => setFirstStepIsDaily(false)} style={{
+              background: !firstStepIsDaily ? `${T.purple}22` : T.surface,
+              border: `2px solid ${!firstStepIsDaily ? T.purple : T.border}`,
+              borderRadius: 14, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
             }}>
-              {/* Text row */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: '50%', background: T.card,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, color: T.muted, fontFamily: 'DM Sans', fontWeight: 600,
-                  flexShrink: 0, marginTop: 2,
-                }}>
-                  {i + 1}
-                </div>
-                <input
-                  value={s.text}
-                  onChange={e => updateGoalStep(s.id, 'text', e.target.value)}
-                  placeholder="What's this step?"
-                  style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: 13, marginBottom: 0 }}
-                />
-                {goalSteps.length > 1 && (
-                  <button onClick={() => removeGoalStep(s.id)} style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: T.subtle, fontSize: 14, padding: '4px', flexShrink: 0,
-                  }}>
-                    <X size={14} color={T.subtle} />
-                  </button>
-                )}
+              <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, color: !firstStepIsDaily ? T.purple : T.textDim, marginBottom: 2 }}>
+                ⭐ Just this once
               </div>
-              {/* Type toggle */}
-              <div style={{ display: 'flex', gap: 7 }}>
-                {stepTypeBtn(s.id, true,  'Daily habit', '🔄', T.teal)}
-                {stepTypeBtn(s.id, false, 'Once-off',    '✅', T.purple)}
+              <div style={{ fontFamily: 'DM Sans', fontSize: 11, color: T.textDim }}>
+                A one-time thing — completing it permanently checks this step off.
               </div>
-            </div>
-          ))}
-
-          <button onClick={addGoalStep} style={{
-            width: '100%', padding: '12px',
-            background: 'transparent',
-            border: `1.5px dashed ${T.borderStrong}`,
-            borderRadius: 12, color: T.muted,
-            fontSize: 13, fontFamily: 'DM Sans', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            transition: 'all 0.15s',
-          }}>
-            <Plus size={16} color={T.muted} /> Add a step
-          </button>
+            </button>
+            <button onClick={() => setFirstStepIsDaily(true)} style={{
+              background: firstStepIsDaily ? `${T.teal}1a` : T.surface,
+              border: `2px solid ${firstStepIsDaily ? T.teal : T.border}`,
+              borderRadius: 14, padding: '12px 16px', cursor: 'pointer', textAlign: 'left',
+            }}>
+              <div style={{ fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, color: firstStepIsDaily ? T.teal : T.textDim, marginBottom: 2 }}>
+                🔁 Every day
+              </div>
+              <div style={{ fontFamily: 'DM Sans', fontSize: 11, color: T.textDim }}>
+                A daily habit — you'll check it off each day and build a streak.
+              </div>
+            </button>
+          </div>
         </div>
       ),
-      canNext: filledStepCount > 0,
-      canSkip: false,
+      canNext: firstStep.trim().length > 2,
     },
     {
       title: 'Pick a friend pet',
@@ -8625,8 +8581,9 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       canNext: (friendIsMystery) || (friendType && friendColor),
     },
     {
-      title: isFirstGoal ? `Almost there, ${user.petName}!` : 'Your goal is ready!',
+      title: isFirstGoal ? `Almost there, ${user.petName}!` : 'All set',
       sub: isFirstGoal ? `Finish your first step and ${user.petName} will hatch.` : '',
+      example: '',
       content: (
         <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: 20 }}>
           <div style={{ marginBottom: 16, textAlign: 'center' }}>
@@ -8636,12 +8593,10 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               mystery={!isFirstGoal && friendIsMystery}
             />
           </div>
-          {/* Goal name */}
           <div style={{ marginBottom: 14 }}>
             <div style={lblStyle}>Goal</div>
             <div style={valStyle}>{title}</div>
           </div>
-          {/* Category */}
           {category && (
             <div style={{ marginBottom: 14 }}>
               <div style={lblStyle}>Type</div>
@@ -8651,46 +8606,28 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
               </div>
             </div>
           )}
-          {/* Obstacles */}
-          {(obstacles.length > 0 || customObstacle.trim()) && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={lblStyle}>Watch out for</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                {[...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean), ...(customObstacle.trim() ? [customObstacle.trim()] : [])].map((o, i) => (
-                  <span key={i} style={{ background: `${T.amber}22`, color: T.amber, fontSize: 12, padding: '4px 10px', borderRadius: 12, fontFamily: 'DM Sans' }}>{o}</span>
-                ))}
+          <div style={{ marginBottom: 14 }}>
+            <div style={lblStyle}>Why</div>
+            {whyAnchor && whyAnchor !== 'free_text' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: why.trim() ? 6 : 0 }}>
+                <span style={{ fontSize: 18 }}>{WHY_ANCHORS.find(a => a.id === whyAnchor)?.emoji}</span>
+                <span style={{ ...valStyle, color: T.teal }}>{WHY_ANCHORS.find(a => a.id === whyAnchor)?.label}</span>
               </div>
+            )}
+            {why.trim() && <div style={valStyle}>{why}</div>}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={lblStyle}>Watch out for</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              {[...obstacles.map(id => obstacleOptions.find(o => o.id === id)?.label).filter(Boolean), ...(customObstacle.trim() ? [customObstacle.trim()] : [])].map((o, i) => (
+                <span key={i} style={{ background: `${T.amber}22`, color: T.amber, fontSize: 12, padding: '4px 10px', borderRadius: 12, fontFamily: 'DM Sans' }}>{o}</span>
+              ))}
             </div>
-          )}
-          {/* Steps */}
-          {goalSteps.filter(s => s.text.trim()).length > 0 && (
-            <div>
-              <div style={lblStyle}>Baby steps</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                {goalSteps.filter(s => s.text.trim()).map((s, i) => (
-                  <div key={s.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    background: T.card, borderRadius: 10, padding: '10px 12px',
-                    borderLeft: `3px solid ${s.daily ? T.teal : T.purple}`,
-                  }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '50%', background: T.surface,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, color: T.muted, fontFamily: 'DM Sans', fontWeight: 600, flexShrink: 0,
-                    }}>{i + 1}</div>
-                    <span style={{ flex: 1, fontSize: 13, fontFamily: 'DM Sans', color: T.textDim }}>{s.text}</span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
-                      background: s.daily ? `${T.teal}1a` : `${T.purple}1a`,
-                      color: s.daily ? T.teal : T.purple, fontFamily: 'DM Sans', whiteSpace: 'nowrap',
-                    }}>
-                      {s.daily ? 'Daily' : 'Once-off'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
+          <div>
+            <div style={lblStyle}>First tiny step</div>
+            <div style={valStyle}>{firstStep}</div>
+          </div>
         </div>
       ),
       canNext: true,
@@ -8726,27 +8663,14 @@ function NewGoalFlow({ user, setUser, onClose, isFirstGoal = false }) {
       <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
         <h2 style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 24, color: T.text, letterSpacing: '-0.3px', marginBottom: 8 }}>{cur.title}</h2>
         {cur.sub && <p style={{ color: T.textDim, fontSize: 14, fontFamily: 'DM Sans', marginBottom: 6, lineHeight: 1.5 }}>{cur.sub}</p>}
-        {cur.example && <p style={{ color: T.muted, fontSize: 13, fontFamily: 'DM Sans', marginBottom: 16, fontStyle: 'italic' }}>{cur.example}</p>}
-        {!cur.sub && !cur.example && <div style={{ marginBottom: 20 }} />}
-        {cur.sub && !cur.example && <div style={{ marginBottom: 16 }} />}
+        {cur.example && <p style={{ color: T.muted, fontSize: 13, fontFamily: 'DM Sans', marginBottom: 20, fontStyle: 'italic' }}>{cur.example}</p>}
+        {(!cur.example) && <div style={{ marginBottom: 20 }} />}
         {cur.content}
       </div>
-      <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 10 }}>
-        {cur.canSkip && (
-          <button onClick={() => setStep(step + 1)} style={{
-            padding: '14px 20px', background: T.surface,
-            border: `1px solid ${T.border}`, borderRadius: 14,
-            color: T.muted, fontSize: 14, fontFamily: 'DM Sans', cursor: 'pointer',
-          }}>
-            Skip
-          </button>
-        )}
-        <button
-          onClick={isLast ? finish : () => cur.canNext && setStep(step + 1)}
-          disabled={!cur.canNext}
-          style={{ ...primaryBtn, flex: 1, opacity: cur.canNext ? 1 : 0.4, cursor: cur.canNext ? 'pointer' : 'not-allowed' }}
-        >
-          {isLast ? 'Lock it in 🎉' : 'Next →'}
+      <div style={{ padding: 20, borderTop: `1px solid ${T.border}` }}>
+        <button onClick={isLast ? finish : () => cur.canNext && setStep(step + 1)} disabled={!cur.canNext}
+          style={{ ...primaryBtn, opacity: cur.canNext ? 1 : 0.4, cursor: cur.canNext ? 'pointer' : 'not-allowed' }}>
+          {isLast ? 'Lock it in' : 'Next'}
         </button>
       </div>
     </div>
@@ -13713,22 +13637,43 @@ function HatchWorldOverlay({ user, onClose }) {
     };
   }, [stage]);
 
-  function handleLocationTap(loc) { setTappedLocation(loc); }
+  function handleLocationTap(loc) {
+    // OPEN locations enter directly. SOON locations show the info card.
+    if (typeof console !== "undefined") console.log("[Park] tap location:", loc.id, loc.status);
+    if (loc.status === "open") {
+      enterLocation(loc);
+    } else {
+      setTappedLocation(loc);
+    }
+  }
 
   function enterLocation(loc) {
     if (loc.status === "soon") return;
-    // Position the pet inside the rooftop scene
-    if (typeof window !== "undefined") {
-      const winW = window.innerWidth, winH = window.innerHeight;
-      setMyPet(p => ({
-        ...p,
-        x: winW * 0.4 + Math.random() * winW * 0.2,
-        y: winH * 0.7 + Math.random() * winH * 0.05,
-      }));
-    }
+    if (typeof console !== "undefined") console.log("[Park] enter location:", loc.id);
     setTappedLocation(null);
     setStage(loc.id);
+    // Pet position is set by an effect below using actual scene dimensions.
   }
+
+  // ===== position the pet inside the scene when we arrive =====
+  useEffect(() => {
+    if (typeof console !== "undefined") console.log("[Park] stage changed to:", stage);
+    if (stage !== "rooftop") return;
+    // Wait one frame for sceneRef to be measurable
+    const id = requestAnimationFrame(() => {
+      if (!sceneRef.current) {
+        if (typeof console !== "undefined") console.log("[Park] sceneRef not ready");
+        return;
+      }
+      const rect = sceneRef.current.getBoundingClientRect();
+      if (typeof console !== "undefined") console.log("[Park] scene dims:", rect.width, "x", rect.height);
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const x = rect.width * 0.5 + (Math.random() - 0.5) * rect.width * 0.2;
+      const y = rect.height * 0.78 + (Math.random() - 0.5) * rect.height * 0.04;
+      setMyPet(p => p ? { ...p, x, y } : p);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [stage]);
 
   // ===== rooftop bot logic =====
   useEffect(() => {
@@ -14161,7 +14106,7 @@ function HatchWorldOverlay({ user, onClose }) {
 
   // ===== ROOFTOP (default for any opened location since only rooftop is "open") =====
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out", background: "#1A0F33" }}>
       <style>{fontStyles}</style>
 
       <div className="px-5 py-3 flex items-center justify-between" style={{
