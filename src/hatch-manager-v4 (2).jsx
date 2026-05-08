@@ -36,13 +36,30 @@ const GOAL_CATS = [
   { value: 'learning', label: '📚 Learning', color: '#8B7CF8' },
 ];
 
+const SUPABASE_URL = 'https://xwmvocuwjniitkwcfjkp.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bXZvY3V3am5paXRrd2NmamtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDA3NDMsImV4cCI6MjA5MzcxNjc0M30.7957DOcu_yKxo9ot-TZOo5MNHfbgQYiv4WMLf17Bj2Y';
+const SB_HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+
 async function sGet(key) {
-  try { if (window.storage) { const v = await window.storage.get(STORAGE_PREFIX + key); return v ? JSON.parse(v.value) : null; } } catch (e) {}
-  try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + key)); } catch (e) { return null; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/hatch_data?key=eq.${encodeURIComponent(STORAGE_PREFIX + key)}&select=value`, { headers: SB_HEADERS });
+    const rows = await res.json();
+    return rows.length > 0 ? rows[0].value : null;
+  } catch (e) {
+    try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + key)); } catch (e2) { return null; }
+  }
 }
 async function sSet(key, data) {
-  try { if (window.storage) { await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(data)); return true; } } catch (e) {}
-  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data)); return true; } catch (e) { return false; }
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/hatch_data`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ key: STORAGE_PREFIX + key, value: data }),
+    });
+    return true;
+  } catch (e) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data)); return true; } catch (e2) { return false; }
+  }
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function ago(ts) {
