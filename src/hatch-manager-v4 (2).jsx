@@ -219,21 +219,32 @@ function CreateUserModal({ type, onClose, onCreated }) {
       if (pw.length < 6) return setMsg({ text: 'Password must be at least 6 characters', type: 'error' });
       if (pw !== pw2) return setMsg({ text: 'Passwords do not match', type: 'error' });
     }
+    if (type === 'teen') {
+      if (!pw.trim()) return setMsg({ text: 'Please set a 4-digit PIN for this teen', type: 'error' });
+      if (!/^\d{4}$/.test(pw)) return setMsg({ text: 'PIN must be exactly 4 digits', type: 'error' });
+    }
     setBusy(true);
     if (await sGet('user:' + un.trim())) { setMsg({ text:'Username already taken', type:'error' }); setBusy(false); return; }
     const u = {
-      username: un.trim(), email: em.trim(),
+      username: un.trim().toLowerCase(), email: em.trim(),
       role: type,
       password: type === 'sw' ? pw.trim() : null,
+      pin: type === 'teen' ? pw.trim() : null,
       createdAt: Date.now(), createdBy: 'manager',
       petName: null, petType: null, petColor: null,
       tickets: 0, petInventory: [], assignedSWs: [],
+      // teen app fields — initialised so the teen app works on first login
+      ...(type === 'teen' ? {
+        hatched: false, bondLevel: 0, totalInteractions: 0,
+        xp: 0, goals: [], friendPets: [], sensoryProfile: null,
+        soundOn: true, activePetGoal: null, petGoalHistory: [],
+      } : {}),
     };
     await sSet('user:' + u.username, u);
     if (type === 'teen') { const all = await sGet('allTeens') || []; await sSet('allTeens', [...all, u]); }
     else { const all = await sGet('allSWs') || []; await sSet('allSWs', [...all, u]); }
     setBusy(false);
-    setMsg({ text: `✅ ${un} created!${type === 'sw' ? ' They can log in with that password now.' : ' They can set up their pet on first login.'}`, type: 'success' });
+    setMsg({ text: `✅ ${un} created! ${type === 'sw' ? 'They can log in with that password.' : 'They can log in with that PIN.'}`, type: 'success' });
     onCreated?.();
     setTimeout(onClose, 2000);
   }
@@ -242,7 +253,7 @@ function CreateUserModal({ type, onClose, onCreated }) {
     <Overlay onClose={onClose}>
       <h2 style={{ color:T.text, fontFamily:'Syne', fontWeight:800, margin:'0 0 4px' }}>New {type==='teen'?'Teen':'Support Worker'}</h2>
       <p style={{ color:T.muted, fontSize:12, marginBottom:16 }}>
-        {type === 'sw' ? 'Set their login password now — they can log straight in.' : "They'll pick a pet on first login."}
+        {type === 'sw' ? 'Set their login password — they can log straight in.' : 'Set their 4-digit PIN — they can log straight in.'}
       </p>
       <Msg text={msg?.text} type={msg?.type} />
       <Field label="Username" value={un} onChange={setUn} placeholder="e.g., alex.j" disabled={busy} />
@@ -251,6 +262,15 @@ function CreateUserModal({ type, onClose, onCreated }) {
         <Field label="Password" value={pw} onChange={setPw} placeholder="At least 6 characters" type="password" disabled={busy} />
         <Field label="Confirm Password" value={pw2} onChange={setPw2} placeholder="••••••••" type="password" disabled={busy} />
       </>}
+      {type === 'teen' && (
+        <div style={{ marginBottom:12 }}>
+          <label style={{ color:T.textDim, fontSize:12, display:'block', marginBottom:6 }}>4-Digit PIN</label>
+          <input value={pw} onChange={e => setPw(e.target.value.replace(/\D/g,'').slice(0,4))}
+            placeholder="e.g., 1234" inputMode="numeric" maxLength={4} disabled={busy}
+            style={{ width:'100%', padding:'11px 12px', background:T.card, border:`1px solid ${T.border}`, borderRadius:10, color:T.text, fontFamily:'DM Sans', fontSize:18, letterSpacing:8, textAlign:'center', boxSizing:'border-box', opacity: busy ? 0.5 : 1 }} />
+          <div style={{ color:T.muted, fontSize:11, marginTop:6 }}>Teen uses this PIN to log into the Hatch app</div>
+        </div>
+      )}
       <div style={{ display:'flex', gap:8, marginTop:8 }}>
         <Btn onClick={onClose} color={T.card} fg={T.text} style={{ flex:1, justifyContent:'center', border:`1px solid ${T.border}` }}>Cancel</Btn>
         <Btn onClick={create} disabled={!un.trim() || !em.trim() || busy} style={{ flex:1, justifyContent:'center' }}>{busy ? '⏳' : 'Create'}</Btn>
