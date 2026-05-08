@@ -4889,17 +4889,15 @@ function GroomScene({ user, onComplete }) {
         })}
       </div>
 
-      {/* Pet in the bathtub — bottom-anchored so it always sits in the tub
-          regardless of aspect ratio (top:% varied with the SVG's slice scaling
-          and put the pet's head above the tub rim on tall phones). */}
+      {/* Pet in the bathtub */}
       <div style={{
-        position: 'absolute', bottom: '24%', left: '50%',
-        transform: 'translate(-50%, 0)',
+        position: 'absolute', top: '52%', left: '50%',
+        transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
         zIndex: 3,
       }}>
         <AnimalPet type={user.petType} color={user.petColor}
-                   mood={done ? 'happy' : (scrubbing ? 'happy' : 'awake')} size={170}
+                   mood={done ? 'happy' : (scrubbing ? 'happy' : 'awake')} size={200}
                    variant={user.petVariant || 'cute'} />
       </div>
 
@@ -7894,7 +7892,7 @@ function WalkthroughEditor({ step, onChange, onClose }) {
             style={{
               width: '100%', boxSizing: 'border-box',
               background: T.card, color: T.text, border: `1px solid ${T.border}`,
-              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 13,
+              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 16,
               marginBottom: 10,
             }}
           />
@@ -7908,7 +7906,7 @@ function WalkthroughEditor({ step, onChange, onClose }) {
             style={{
               width: '100%', boxSizing: 'border-box',
               background: T.card, color: T.text, border: `1px solid ${T.border}`,
-              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 13,
+              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 16,
               marginBottom: 10,
             }}
           />
@@ -7922,7 +7920,7 @@ function WalkthroughEditor({ step, onChange, onClose }) {
             style={{
               width: '100%', boxSizing: 'border-box',
               background: T.card, color: T.text, border: `1px solid ${T.border}`,
-              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 13,
+              borderRadius: 8, padding: '9px 11px', fontFamily: 'DM Sans', fontSize: 16,
               marginBottom: 12,
             }}
           />
@@ -9229,7 +9227,7 @@ function GoalDetailScreen({ user, setUser, goalId, onClose }) {
                             value={editFields[f.key]}
                             onChange={e => setEditFields(prev => ({ ...prev, [f.key]: e.target.value }))}
                             placeholder={f.placeholder}
-                            style={{ width: '100%', padding: '10px 12px', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontSize: 14, fontFamily: 'DM Sans', outline: 'none', boxSizing: 'border-box' }}
+                            style={{ width: '100%', padding: '10px 12px', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontSize: 16, fontFamily: 'DM Sans', outline: 'none', boxSizing: 'border-box' }}
                           />
                         </div>
                       ))}
@@ -13558,7 +13556,14 @@ function ParkPet({ pet, isMe, isBot, onTap }) {
 function HatchWorldOverlay({ user, onClose }) {
   const cohortCode = "hatch"; // single global cohort for v1
   const [stage, setStage] = useState("map");
-  const [myPet, setMyPet] = useState(() => deriveParkPetFromUser(user));
+  const [myPet, setMyPet] = useState(() => {
+    const p = deriveParkPetFromUser(user);
+    if (typeof window !== 'undefined') {
+      p.x = window.innerWidth * 0.5;
+      p.y = window.innerHeight * 0.75;
+    }
+    return p;
+  });
   const [otherPets, setOtherPets] = useState([]);
   const [storageWorks, setStorageWorks] = useState(true);
   const [regulars, setRegulars] = useState(() =>
@@ -13637,43 +13642,22 @@ function HatchWorldOverlay({ user, onClose }) {
     };
   }, [stage]);
 
-  function handleLocationTap(loc) {
-    // OPEN locations enter directly. SOON locations show the info card.
-    if (typeof console !== "undefined") console.log("[Park] tap location:", loc.id, loc.status);
-    if (loc.status === "open") {
-      enterLocation(loc);
-    } else {
-      setTappedLocation(loc);
-    }
-  }
+  function handleLocationTap(loc) { setTappedLocation(loc); }
 
   function enterLocation(loc) {
     if (loc.status === "soon") return;
-    if (typeof console !== "undefined") console.log("[Park] enter location:", loc.id);
+    // Position the pet inside the rooftop scene
+    if (typeof window !== "undefined") {
+      const winW = window.innerWidth, winH = window.innerHeight;
+      setMyPet(p => ({
+        ...p,
+        x: winW * 0.4 + Math.random() * winW * 0.2,
+        y: winH * 0.7 + Math.random() * winH * 0.05,
+      }));
+    }
     setTappedLocation(null);
     setStage(loc.id);
-    // Pet position is set by an effect below using actual scene dimensions.
   }
-
-  // ===== position the pet inside the scene when we arrive =====
-  useEffect(() => {
-    if (typeof console !== "undefined") console.log("[Park] stage changed to:", stage);
-    if (stage !== "rooftop") return;
-    // Wait one frame for sceneRef to be measurable
-    const id = requestAnimationFrame(() => {
-      if (!sceneRef.current) {
-        if (typeof console !== "undefined") console.log("[Park] sceneRef not ready");
-        return;
-      }
-      const rect = sceneRef.current.getBoundingClientRect();
-      if (typeof console !== "undefined") console.log("[Park] scene dims:", rect.width, "x", rect.height);
-      if (rect.width <= 0 || rect.height <= 0) return;
-      const x = rect.width * 0.5 + (Math.random() - 0.5) * rect.width * 0.2;
-      const y = rect.height * 0.78 + (Math.random() - 0.5) * rect.height * 0.04;
-      setMyPet(p => p ? { ...p, x, y } : p);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [stage]);
 
   // ===== rooftop bot logic =====
   useEffect(() => {
@@ -14106,7 +14090,7 @@ function HatchWorldOverlay({ user, onClose }) {
 
   // ===== ROOFTOP (default for any opened location since only rooftop is "open") =====
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out", background: "#1A0F33" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
       <style>{fontStyles}</style>
 
       <div className="px-5 py-3 flex items-center justify-between" style={{
@@ -14138,7 +14122,7 @@ function HatchWorldOverlay({ user, onClose }) {
       </div>
 
       <div ref={sceneRef} className="flex-1 relative cursor-pointer overflow-hidden" onClick={handleClick}
-        style={{ background: "linear-gradient(180deg, #1A0F33 0%, #3D1B4E 18%, #7B2A5C 38%, #C44A6E 58%, #E89868 78%, #F4C490 100%)" }}>
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0, background: "linear-gradient(180deg, #1A0F33 0%, #3D1B4E 18%, #7B2A5C 38%, #C44A6E 58%, #E89868 78%, #F4C490 100%)" }}>
         <ParkStars />
         <div className="absolute pointer-events-none" style={{
           bottom: "320px", left: "50%", transform: "translateX(-50%)",
@@ -14674,6 +14658,7 @@ function Style() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
       body { margin: 0; background: ${T.bg}; }
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
       * { box-sizing: border-box; }
       input, textarea { -webkit-appearance: none; }
       input:focus, textarea:focus { border-color: ${T.teal}66 !important; }
@@ -14767,6 +14752,13 @@ function Style() {
 export default function App() {
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState('home');
+
+  // Ensure correct mobile viewport — prevents iOS auto-zoom on input focus
+  useEffect(() => {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
+    meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+  }, []);
   const [goalDetailId, setGoalDetailId] = useState(null);
   const [showNewGoal, setShowNewGoal] = useState(false);
   const [loading, setLoading] = useState(true); // true while we check storage
