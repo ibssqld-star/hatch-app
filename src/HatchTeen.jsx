@@ -13350,10 +13350,12 @@ function ShoppingGameActivity({ onFinish }) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // SOCIAL — multi-place social world ("The Park") + future social scenarios
-// Origin: HatchPark.jsx (HatchPark__2_.jsx, swapped in 2026-05-11).
-// Integrated as a HatchTeen tab via HatchWorldOverlay({ user, onClose }).
+// Origin: HatchPark.jsx, integrated as a Hatch tab. Each "social situation"
+// lives as a module here (parallel to LEARN_MODULES). Add more by creating
+// a new module entry + a corresponding overlay component.
 // ════════════════════════════════════════════════════════════════════════════
 
+// ─── Park constants ─────────────────────────────────────────────────────────
 const PARK_COLORS = [
   { name: "Coral", value: "#E8736B" }, { name: "Sage", value: "#7FA88E" },
   { name: "Honey", value: "#E0A95C" }, { name: "Lilac", value: "#9B8AC4" },
@@ -13361,35 +13363,34 @@ const PARK_COLORS = [
   { name: "Cocoa", value: "#8E6B52" }, { name: "Cream", value: "#E8D5B0" },
 ];
 
-const HATS = [
+const PARK_HATS = [
   { id: "none", label: "None" }, { id: "beanie", label: "Beanie" },
   { id: "bucket", label: "Bucket" }, { id: "cap", label: "Cap" },
   { id: "headphones", label: "Cans" }, { id: "hood", label: "Hood" },
 ];
 
-const ACCESSORIES = [
+const PARK_ACCESSORIES = [
   { id: "none", label: "None" }, { id: "shades", label: "Shades" },
   { id: "scarf", label: "Scarf" }, { id: "chain", label: "Chain" },
   { id: "bandana", label: "Bandana" },
 ];
 
-const EMOTES = [
+const PARK_EMOTES = [
   { id: "wave", emoji: "👋", label: "Hey" }, { id: "heart", emoji: "♥", label: "Love" },
   { id: "fire", emoji: "🔥", label: "Fire" }, { id: "music", emoji: "♪", label: "Vibe" },
   { id: "snack", emoji: "✦", label: "Yes" },
 ];
 
-const DROP_TYPES = [
+const PARK_DROP_TYPES = [
   { id: "flower", label: "Flower" }, { id: "star", label: "Star" },
   { id: "heart", label: "Heart" }, { id: "music", label: "Music" },
   { id: "snack", label: "Snack" }, { id: "sparkle", label: "Sparkle" },
 ];
 
-const CAPTIONS = [null, "for you", "thinking of u", "you got this", "stay cool", "vibes", "thx for being here"];
-const DROP_TTL_MS = 1000 * 60 * 60 * 24;
+const PARK_CAPTIONS = [null, "for you", "thinking of u", "you got this", "stay cool", "vibes", "thx for being here"];
+const PARK_DROP_TTL_MS = 1000 * 60 * 60 * 24;
 
-// ============ MAP LOCATIONS — positions in landscape (1800x900 viewBox) ============
-const MAP_LOCATIONS = [
+const PARK_MAP_LOCATIONS = [
   { id: "beach", name: "The Beach", vibe: "Sand · palms · ocean", time: "Midday", status: "soon",
     mapX: 200, mapY: 580, regulars: ["Marlow", "Tide"] },
   { id: "greenhouse", name: "The Greenhouse", vibe: "Plants · koi pond", time: "Afternoon", status: "soon",
@@ -13402,7 +13403,7 @@ const MAP_LOCATIONS = [
     mapX: 1560, mapY: 540, regulars: ["Cherry", "Dot"] },
 ];
 
-const REGULARS = [
+const PARK_REGULARS = [
   { id: "regular_mochi", name: "Mochi", color: "#9B8AC4", hat: "headphones", accessory: "scarf",
     isBot: true, bio: "always near the boombox",
     home: { x: 600, y: 470 }, wander: 80, moveInterval: [7000, 14000], emoteChance: 0.35, favEmotes: ["music", "heart"] },
@@ -13414,15 +13415,15 @@ const REGULARS = [
     home: { x: 360, y: 470 }, wander: 50, moveInterval: [12000, 22000], emoteChance: 0.25, favEmotes: ["wave", "heart"] },
 ];
 
-const SEED_DROPS = () => [
+const PARK_SEED_DROPS = () => [
   { id: "seed_mochi_1", type: "music", x: 0.62, y: 0.78, caption: "vibes", fromName: "Mochi", fromColor: "#9B8AC4", timestamp: Date.now() - 1000 * 60 * 35 },
   { id: "seed_pip_1", type: "star", x: 0.24, y: 0.84, caption: "you got this", fromName: "Pip", fromColor: "#E8736B", timestamp: Date.now() - 1000 * 60 * 60 * 3 },
   { id: "seed_sage_1", type: "flower", x: 0.72, y: 0.82, caption: "thinking of u", fromName: "Sage", fromColor: "#7FA88E", timestamp: Date.now() - 1000 * 60 * 60 * 7 },
 ];
 
-function generatePetId() { return `pet_${Math.random().toString(36).substring(2, 11)}`; }
-function generateDropId() { return `drop_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; }
-function timeAgo(ts) {
+function parkGeneratePetId() { return `pet_${Math.random().toString(36).substring(2, 11)}`; }
+function parkGenerateDropId() { return `drop_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; }
+function parkTimeAgo(ts) {
   const m = Math.floor((Date.now() - ts) / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
@@ -13431,8 +13432,24 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// ============ HAT/ACCESSORY/PET ============
-function HatLayer({ type }) {
+// ─── Pick a Park colour close to the HatchTeen pet's colour ─────────────────
+// HatchTeen colours are vivid (mint, teal etc) while Park colours are warm/muted.
+// We pass through whatever HatchTeen colour the user has — the Park's palette
+// is just for fallback on the entry stage.
+function deriveParkPetFromUser(user) {
+  return {
+    id: parkGeneratePetId(),
+    name: (user.petName || "Pet").slice(0, 12),
+    color: user.petColor || PARK_COLORS[0].value,
+    hat: "none",
+    accessory: "none",
+    x: 0, y: 0,
+    emote: null, emoteUntil: 0, lastSeen: Date.now(),
+  };
+}
+
+// ─── Park-specific HAT / ACCESSORY layers (different style from HatchTeen) ──
+function ParkHatLayer({ type }) {
   if (type === "beanie") return (<g><path d="M 18 16 Q 38 -4 58 16 L 58 24 Q 38 19 18 24 Z" fill="#3D4A5C" /><rect x="18" y="22" width="40" height="6" rx="2" fill="#2D3845" /></g>);
   if (type === "bucket") return (<g><ellipse cx="38" cy="20" rx="26" ry="5" fill="#7B8A5C" /><path d="M 22 22 Q 22 6 38 6 Q 54 6 54 22 Z" fill="#8FA068" /></g>);
   if (type === "cap") return (<g><path d="M 18 18 Q 38 6 58 18 L 58 22 Q 38 19 18 22 Z" fill="#2D3845" /><ellipse cx="50" cy="22" rx="20" ry="3.5" fill="#1F2833" /><circle cx="38" cy="14" r="3" fill="#E0A95C" opacity="0.9" /></g>);
@@ -13441,7 +13458,7 @@ function HatLayer({ type }) {
   return null;
 }
 
-function AccessoryLayer({ type }) {
+function ParkAccessoryLayer({ type }) {
   if (type === "shades") return (<g><rect x="22" y="26" width="14" height="8" rx="3" fill="#1A1A22" /><rect x="40" y="26" width="14" height="8" rx="3" fill="#1A1A22" /><rect x="24" y="27.5" width="4" height="2" rx="1" fill="rgba(255,255,255,0.4)" /></g>);
   if (type === "scarf") return (<g><path d="M 22 50 Q 38 56 54 50 L 54 56 Q 38 62 22 56 Z" fill="#9B6B7E" /><path d="M 48 54 L 52 68 L 56 66 L 52 52 Z" fill="#9B6B7E" /></g>);
   if (type === "chain") return (<g><path d="M 30 50 Q 38 56 46 50" stroke="#E0A95C" strokeWidth="1.5" fill="none" /><circle cx="38" cy="56" r="2.5" fill="#E0A95C" /></g>);
@@ -13449,7 +13466,7 @@ function AccessoryLayer({ type }) {
   return null;
 }
 
-function PetSVG({ pet, size = 80 }) {
+function ParkPetSVG({ pet, size = 80 }) {
   const id = `pg-${pet.color?.replace("#", "")}-${pet.id || Math.random().toString(36).slice(2, 6)}`;
   return (
     <svg width={size} height={size * 1.13} viewBox="0 0 76 86">
@@ -13466,23 +13483,20 @@ function PetSVG({ pet, size = 80 }) {
       <ellipse cx="30" cy="30" rx="2" ry="2.5" fill="#1A1A22" />
       <ellipse cx="46" cy="30" rx="2" ry="2.5" fill="#1A1A22" />
       <path d="M 35 38 Q 38 39.5 41 38" stroke="#1A1A22" strokeWidth="1.2" fill="none" strokeLinecap="round" opacity="0.7" />
-      <AccessoryLayer type={pet.accessory} />
-      <HatLayer type={pet.hat} />
+      <ParkAccessoryLayer type={pet.accessory} />
+      <ParkHatLayer type={pet.hat} />
     </svg>
   );
 }
 
-// ============ MAP LANDMARKS — illustrated SVG of each room ============
+// ─── Park map landmarks ─────────────────────────────────────────────────────
 function BeachLandmark({ x, y, isOpen, onTap }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
-      {/* sand patch */}
       <path d="M -90 0 Q 0 -10 90 0 Q 80 25 -80 25 Z" fill="#F4D8A8" />
       <path d="M -90 0 Q 0 -10 90 0 Q 80 8 -80 8 Z" fill="#FFE0B0" />
-      {/* small water lap */}
       <path d="M -140 -5 Q -100 -10 -90 0 L -90 5 Q -120 5 -140 0 Z" fill="#5FA8CF" opacity="0.7" />
       <line x1="-130" y1="-2" x2="-100" y2="-2" stroke="white" strokeWidth="0.5" opacity="0.6" />
-      {/* palm tree */}
       <path d="M 5 0 Q 0 -50 10 -100" stroke="#5C3D2E" strokeWidth="5" fill="none" strokeLinecap="round" />
       <path d="M 10 -100 Q -25 -110 -45 -95" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
       <path d="M 10 -100 Q 45 -110 65 -95" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
@@ -13490,7 +13504,6 @@ function BeachLandmark({ x, y, isOpen, onTap }) {
       <path d="M 10 -100 Q 15 -130 30 -140" stroke="#5C8454" strokeWidth="7" fill="none" strokeLinecap="round" />
       <circle cx="8" cy="-98" r="3.5" fill="#5C3D2E" />
       <circle cx="14" cy="-95" r="3" fill="#5C3D2E" />
-      {/* beach umbrella in distance */}
       <path d="M 60 -10 L 60 10" stroke="#5C3D2E" strokeWidth="1.5" />
       <path d="M 45 -10 Q 60 -25 75 -10 Z" fill="#E8736B" />
       <path d="M 45 -10 Q 60 -18 75 -10" fill="#F4B5A0" />
@@ -13503,29 +13516,22 @@ function BeachLandmark({ x, y, isOpen, onTap }) {
 function GreenhouseLandmark({ x, y, isOpen, onTap }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
-      {/* hill */}
       <ellipse cx="0" cy="40" rx="160" ry="50" fill="#4D6B4F" />
       <ellipse cx="0" cy="35" rx="140" ry="40" fill="#5C7B5E" />
-      {/* glass dome */}
       <path d="M -70 -10 Q -70 -90 0 -110 Q 70 -90 70 -10 Z" fill="rgba(170, 220, 200, 0.4)" stroke="#5C7B5E" strokeWidth="2" />
       <path d="M -70 -10 Q -70 -90 0 -110 Q 70 -90 70 -10 Z" fill="url(#glassShine)" opacity="0.5" />
-      {/* glass panes */}
       <line x1="-50" y1="-50" x2="-50" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
       <line x1="-25" y1="-90" x2="-25" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
       <line x1="0" y1="-110" x2="0" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
       <line x1="25" y1="-90" x2="25" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
       <line x1="50" y1="-50" x2="50" y2="-10" stroke="#5C7B5E" strokeWidth="1" opacity="0.6" />
       <line x1="-70" y1="-10" x2="70" y2="-10" stroke="#5C7B5E" strokeWidth="1.5" />
-      {/* base */}
       <rect x="-72" y="-12" width="144" height="14" fill="#7B5337" />
       <rect x="-78" y="-2" width="156" height="6" fill="#5C3D2E" />
-      {/* plants inside (silhouettes) */}
       <ellipse cx="-30" cy="-30" rx="12" ry="20" fill="#3D5C42" opacity="0.9" />
       <ellipse cx="20" cy="-40" rx="14" ry="25" fill="#3D5C42" opacity="0.85" />
       <ellipse cx="-5" cy="-50" rx="10" ry="30" fill="#5C7B5E" opacity="0.7" />
-      {/* warm glow inside */}
       <ellipse cx="0" cy="-40" rx="55" ry="35" fill="#FFE9B0" opacity="0.25" />
-      {/* finial */}
       <circle cx="0" cy="-110" r="3" fill="#E0A95C" />
       <line x1="0" y1="-113" x2="0" y2="-120" stroke="#5C7B5E" strokeWidth="1" />
       {isOpen && <circle cx="0" cy="-60" r="80" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
@@ -13536,38 +13542,31 @@ function GreenhouseLandmark({ x, y, isOpen, onTap }) {
 function RooftopLandmark({ x, y, isOpen, onTap }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
-      {/* tall building */}
       <rect x="-65" y="0" width="130" height="280" fill="#3D2A4E" stroke="#1A0F33" strokeWidth="1.5" />
       <rect x="-65" y="0" width="130" height="280" fill="url(#buildingFade)" opacity="0.5" />
-      {/* windows pattern */}
       {Array.from({ length: 7 }).map((_, row) =>
         Array.from({ length: 3 }).map((_, col) => {
           const wx = -50 + col * 35;
           const wy = 30 + row * 35;
-          const lit = Math.random() > 0.5;
+          const lit = (row + col) % 2 === 0;
           return <rect key={`${row}-${col}`} x={wx} y={wy} width="18" height="20" rx="1"
             fill={lit ? "#FFE066" : "#1A0F33"} opacity={lit ? 0.85 : 0.6} />;
         })
       )}
-      {/* rooftop deck */}
       <rect x="-72" y="-12" width="144" height="14" fill="#7B5337" />
       <rect x="-72" y="-2" width="144" height="3" fill="#5C3D2E" />
-      {/* railing on roof */}
       <rect x="-72" y="-22" width="144" height="2" fill="#3D2D22" />
       {Array.from({ length: 14 }).map((_, i) => (
         <rect key={i} x={-70 + i * 10} y="-22" width="1.5" height="10" fill="#3D2D22" />
       ))}
-      {/* fairy lights string */}
       <path d="M -70 -25 Q 0 -45 70 -25" stroke="#3D2D2D" strokeWidth="0.8" fill="none" />
       {[0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((t, i) => {
         const fx = -70 + t * 140;
         const fy = -25 + Math.sin(t * Math.PI) * 18;
         return <g key={i}><circle cx={fx} cy={fy} r="3.5" fill="#FFE066" opacity="0.5" /><circle cx={fx} cy={fy} r="1.6" fill="#FFEFA8" /></g>;
       })}
-      {/* hint of plant on rooftop */}
       <ellipse cx="-50" cy="-15" rx="8" ry="10" fill="#5C7B5E" />
       <ellipse cx="50" cy="-15" rx="8" ry="10" fill="#5C7B5E" />
-      {/* warm glow above */}
       <ellipse cx="0" cy="-30" rx="100" ry="40" fill="rgba(255, 152, 104, 0.2)" />
       {isOpen && <circle cx="0" cy="-30" r="100" fill="rgba(255, 224, 102, 0.18)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
     </g>
@@ -13577,32 +13576,23 @@ function RooftopLandmark({ x, y, isOpen, onTap }) {
 function DenLandmark({ x, y, isOpen, onTap }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
-      {/* small house/cottage */}
       <rect x="-60" y="0" width="120" height="100" fill="#3D2A38" stroke="#1A0F1A" strokeWidth="1.5" />
-      {/* roof */}
       <path d="M -70 0 L 0 -55 L 70 0 Z" fill="#5C2A38" stroke="#1A0F1A" strokeWidth="1.5" />
       <path d="M -70 0 L 0 -55 L 70 0 Z" fill="url(#roofShade2)" opacity="0.5" />
-      {/* chimney */}
       <rect x="30" y="-40" width="10" height="25" fill="#5C2A38" stroke="#1A0F1A" strokeWidth="1" />
-      {/* smoke */}
       <ellipse cx="35" cy="-50" rx="5" ry="3" fill="rgba(255,255,255,0.4)" style={{ animation: "smoke 4s ease-in-out infinite" }} />
       <ellipse cx="38" cy="-58" rx="6" ry="4" fill="rgba(255,255,255,0.3)" style={{ animation: "smoke 5s ease-in-out infinite 0.5s" }} />
-      {/* warm-lit window */}
       <rect x="-30" y="20" width="35" height="40" rx="2" fill="#FFD080" />
       <rect x="-30" y="20" width="35" height="40" rx="2" fill="url(#windowGlow)" opacity="0.6" />
       <line x1="-12.5" y1="20" x2="-12.5" y2="60" stroke="#5C3D2E" strokeWidth="1.2" />
       <line x1="-30" y1="40" x2="5" y2="40" stroke="#5C3D2E" strokeWidth="1.2" />
-      {/* rain streaks */}
       {Array.from({ length: 8 }).map((_, i) => (
         <line key={i} x1={-25 + i * 4} y1={22 + (i % 3) * 8} x2={-27 + i * 4} y2={32 + (i % 3) * 8}
           stroke="rgba(180, 200, 230, 0.5)" strokeWidth="0.5" />
       ))}
-      {/* door */}
       <rect x="20" y="35" width="25" height="55" rx="2" fill="#5C3D2E" stroke="#1A0F1A" strokeWidth="1" />
       <circle cx="40" cy="62" r="1.5" fill="#E0A95C" />
-      {/* warm glow */}
       <ellipse cx="-12" cy="40" rx="50" ry="30" fill="rgba(255, 208, 128, 0.25)" />
-      {/* puddle */}
       <ellipse cx="-20" cy="100" rx="22" ry="3" fill="#4A5A6E" opacity="0.6" />
       {isOpen && <circle cx="0" cy="0" r="100" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
     </g>
@@ -13612,47 +13602,38 @@ function DenLandmark({ x, y, isOpen, onTap }) {
 function DinerLandmark({ x, y, isOpen, onTap }) {
   return (
     <g transform={`translate(${x}, ${y})`} style={{ cursor: "pointer" }} onClick={onTap}>
-      {/* glow halo first (behind) */}
       <ellipse cx="0" cy="-30" rx="120" ry="60" fill="#E8369B" opacity="0.2" />
       <ellipse cx="0" cy="-30" rx="80" ry="40" fill="#FF6BB8" opacity="0.2" />
-      {/* building */}
       <rect x="-70" y="-20" width="140" height="120" fill="#2D1B33" stroke="#1A0F1A" strokeWidth="1.5" />
       <rect x="-70" y="-20" width="140" height="120" fill="url(#dinerFade)" opacity="0.4" />
-      {/* roof line */}
       <rect x="-72" y="-25" width="144" height="6" fill="#1A0F1A" />
-      {/* big window */}
       <rect x="-60" y="0" width="115" height="55" fill="#0F0820" stroke="#5C2A4A" strokeWidth="2" />
-      {/* booth silhouettes inside */}
       <rect x="-55" y="35" width="35" height="20" rx="3" fill="#C44A6E" />
       <rect x="-15" y="35" width="35" height="20" rx="3" fill="#C44A6E" />
       <rect x="25" y="35" width="30" height="20" rx="3" fill="#C44A6E" />
-      {/* pendant lights */}
       <circle cx="-37" cy="12" r="3" fill="#FFE066" />
       <circle cx="2" cy="12" r="3" fill="#FFE066" />
       <circle cx="40" cy="12" r="3" fill="#FFE066" />
       <line x1="-37" y1="0" x2="-37" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
       <line x1="2" y1="0" x2="2" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
       <line x1="40" y1="0" x2="40" y2="9" stroke="#5C2A4A" strokeWidth="0.5" />
-      {/* neon DINER sign */}
       <rect x="-50" y="-55" width="100" height="28" rx="3" fill="none" stroke="#FF6BB8" strokeWidth="2" />
       <text x="0" y="-37" textAnchor="middle" fontFamily="Caprasimo, cursive" fontSize="18" fill="#FFC4E5" letterSpacing="2"
         style={{ filter: "drop-shadow(0 0 4px #FF6BB8)" }}>DINER</text>
-      {/* door */}
       <rect x="56" y="55" width="18" height="45" fill="#5C2A4A" stroke="#1A0F1A" strokeWidth="1" />
-      {/* sidewalk reflection */}
       <ellipse cx="0" cy="105" rx="80" ry="5" fill="rgba(255, 107, 184, 0.25)" />
       {isOpen && <circle cx="0" cy="0" r="100" fill="rgba(255, 224, 102, 0.15)" style={{ animation: "pulse 3s ease-in-out infinite" }} />}
     </g>
   );
 }
 
-const LANDMARK_COMPONENTS = {
+const PARK_LANDMARK_COMPONENTS = {
   beach: BeachLandmark, greenhouse: GreenhouseLandmark, rooftop: RooftopLandmark,
   den: DenLandmark, diner: DinerLandmark,
 };
 
-// ============ DROP ICONS ============
-function DropIcon({ type, size = 28 }) {
+// ─── Drop icons + drop component ────────────────────────────────────────────
+function ParkDropIcon({ type, size = 28 }) {
   const s = size;
   if (type === "flower") return (<svg width={s} height={s} viewBox="0 0 32 32"><circle cx="16" cy="20" r="5" fill="#E8736B" /><circle cx="9" cy="14" r="4.5" fill="#E89BB0" /><circle cx="23" cy="14" r="4.5" fill="#E89BB0" /><circle cx="12" cy="9" r="4.5" fill="#F4B5C4" /><circle cx="20" cy="9" r="4.5" fill="#F4B5C4" /><circle cx="16" cy="14" r="3" fill="#E0A95C" /></svg>);
   if (type === "star") return (<svg width={s} height={s} viewBox="0 0 32 32"><path d="M 16 4 L 19.5 12.5 L 28 13.5 L 21.5 19 L 23.5 27.5 L 16 23 L 8.5 27.5 L 10.5 19 L 4 13.5 L 12.5 12.5 Z" fill="#E0A95C" stroke="#C4744A" strokeWidth="1" /></svg>);
@@ -13663,7 +13644,7 @@ function DropIcon({ type, size = 28 }) {
   return null;
 }
 
-function Drop({ drop, onTap }) {
+function ParkDrop({ drop, onTap }) {
   const ageMs = Date.now() - drop.timestamp;
   const isFresh = ageMs < 1000 * 60 * 60;
   const opacity = ageMs > 1000 * 60 * 60 * 12 ? 0.6 : 1;
@@ -13678,14 +13659,14 @@ function Drop({ drop, onTap }) {
         background: `radial-gradient(circle, ${drop.fromColor}40 0%, transparent 70%)`, filter: "blur(4px)",
       }} />
       <div style={{ animation: "dropFloat 3s ease-in-out infinite" }}>
-        <DropIcon type={drop.type} size={32} />
+        <ParkDropIcon type={drop.type} size={32} />
       </div>
     </div>
   );
 }
 
-// ============ ROOFTOP SCENE PROPS ============
-function CitySkyline() {
+// ─── Rooftop scene props ────────────────────────────────────────────────────
+function ParkCitySkyline() {
   return (
     <svg className="absolute left-0 right-0" style={{ bottom: "260px", width: "100%", opacity: 0.65 }} height="180" viewBox="0 0 1000 180" preserveAspectRatio="none">
       <defs><linearGradient id="cityGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1A1133" /><stop offset="100%" stopColor="#2D1B4E" /></linearGradient></defs>
@@ -13706,13 +13687,13 @@ function CitySkyline() {
       <rect x="860" y="55" width="50" height="125" fill="url(#cityGrad)" />
       <rect x="910" y="75" width="90" height="105" fill="url(#cityGrad)" />
       {Array.from({ length: 40 }).map((_, i) => (
-        <rect key={i} x={Math.random() * 1000} y={40 + Math.random() * 130} width="2" height="3" fill="#FFE066" opacity={0.7 + Math.random() * 0.3} />
+        <rect key={i} x={(i * 977) % 1000} y={40 + ((i * 37) % 130)} width="2" height="3" fill="#FFE066" opacity={0.7 + ((i * 13) % 30) / 100} />
       ))}
     </svg>
   );
 }
 
-function FairyLights({ y, count = 10 }) {
+function ParkFairyLights({ y, count = 10 }) {
   const points = Array.from({ length: count + 1 }).map((_, i) => i / count);
   return (
     <svg className="absolute left-0 right-0 pointer-events-none" style={{ top: `${y}px`, width: "100%" }} height="80" viewBox="0 0 1000 80" preserveAspectRatio="none">
@@ -13726,7 +13707,7 @@ function FairyLights({ y, count = 10 }) {
   );
 }
 
-function PottedPlant({ left, bottom, kind = "monstera" }) {
+function ParkPottedPlant({ left, bottom, kind = "monstera" }) {
   return (
     <div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px`, animation: "sway 6s ease-in-out infinite" }}>
       <svg width="80" height="120" viewBox="0 0 80 120">
@@ -13745,7 +13726,7 @@ function PottedPlant({ left, bottom, kind = "monstera" }) {
   );
 }
 
-function Bench({ left, bottom }) {
+function ParkBench({ left, bottom }) {
   return (<div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px` }}>
     <svg width="160" height="80" viewBox="0 0 160 80">
       <ellipse cx="80" cy="76" rx="65" ry="3" fill="rgba(0,0,0,0.25)" />
@@ -13759,7 +13740,7 @@ function Bench({ left, bottom }) {
   </div>);
 }
 
-function Boombox({ left, bottom }) {
+function ParkBoombox({ left, bottom }) {
   return (<div className="absolute" style={{ left: typeof left === "number" ? `${left}px` : left, bottom: `${bottom}px` }}>
     <svg width="80" height="60" viewBox="0 0 80 60">
       <ellipse cx="40" cy="56" rx="30" ry="2.5" fill="rgba(0,0,0,0.25)" />
@@ -13774,7 +13755,7 @@ function Boombox({ left, bottom }) {
   </div>);
 }
 
-function Railing() {
+function ParkRailing() {
   return (
     <svg className="absolute left-0 right-0 pointer-events-none" style={{ bottom: "240px", width: "100%" }} height="50" viewBox="0 0 1000 50" preserveAspectRatio="none">
       <rect x="0" y="0" width="1000" height="6" fill="#3D2D22" />
@@ -13784,20 +13765,23 @@ function Railing() {
   );
 }
 
-function Stars() {
+function ParkStars() {
+  // Deterministic star pattern (was Math.random — caused re-render flicker)
+  const stars = useMemo(() => Array.from({ length: 30 }).map((_, i) => ({
+    x: (i * 173) % 1000,
+    y: (i * 91) % 350,
+    r: 0.4 + ((i * 17) % 8) / 10,
+    o: 0.3 + ((i * 23) % 70) / 100,
+  })), []);
   return (
     <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: "100%", height: "40%" }} viewBox="0 0 1000 400" preserveAspectRatio="none">
-      {Array.from({ length: 30 }).map((_, i) => {
-        const x = Math.random() * 1000, y = Math.random() * 350;
-        const r = Math.random() * 0.8 + 0.4, o = 0.3 + Math.random() * 0.7;
-        return <circle key={i} cx={x} cy={y} r={r} fill="white" opacity={o} />;
-      })}
+      {stars.map((s, i) => <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="white" opacity={s.o} />)}
     </svg>
   );
 }
 
-function Pet({ pet, isMe, isBot, onTap }) {
-  const emote = EMOTES.find(e => e.id === pet.emote);
+function ParkPet({ pet, isMe, isBot, onTap }) {
+  const emote = PARK_EMOTES.find(e => e.id === pet.emote);
   return (
     <div className="absolute" style={{
       left: `${pet.x}px`, top: `${pet.y}px`,
@@ -13809,7 +13793,7 @@ function Pet({ pet, isMe, isBot, onTap }) {
         style={{ background: "rgba(255, 248, 232, 0.95)", backdropFilter: "blur(8px)", color: "#2D1B33", animation: "bobble 0.6s ease-out" }}>
         {emote.emoji}
       </div>)}
-      <div style={{ animation: "idle 2.6s ease-in-out infinite" }}><PetSVG pet={pet} size={76} /></div>
+      <div style={{ animation: "idle 2.6s ease-in-out infinite" }}><ParkPetSVG pet={pet} size={76} /></div>
       <div className="text-center mt-0.5">
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px]" style={{
           fontFamily: "'Outfit', sans-serif", fontWeight: 600,
@@ -13825,40 +13809,29 @@ function Pet({ pet, isMe, isBot, onTap }) {
   );
 }
 
-// ============ MAIN ============
+// ════════════════════════════════════════════════════════════════════════════
+// HATCH WORLD OVERLAY — fullscreen Park experience.
+// Receives the user from HatchTeen and skips the entry stage by deriving the
+// pet automatically. onClose returns to the Social tab.
+// ════════════════════════════════════════════════════════════════════════════
 function HatchWorldOverlay({ user, onClose }) {
-  // Start straight at the map — pet is derived from the HatchTeen user.
-  // The entry stage is still reachable later if the user wants to customize.
+  const cohortCode = "hatch"; // single global cohort for v1
   const [stage, setStage] = useState("map");
-  const [name, setName] = useState(((user && user.petName) || "Pickle").slice(0, 12));
-  const [color, setColor] = useState((user && user.petColor) || PARK_COLORS[0].value);
-  const [hat, setHat] = useState("none");
-  const [accessory, setAccessory] = useState("none");
-  const [cohortCode, setCohortCode] = useState("hatch"); // single global cohort
   const [myPet, setMyPet] = useState(() => {
-    const winW = typeof window !== "undefined" ? window.innerWidth : 1000;
-    const winH = typeof window !== "undefined" ? window.innerHeight : 800;
-    return {
-      id: generatePetId(),
-      name: ((user && user.petName) || "Pickle").slice(0, 12),
-      color: (user && user.petColor) || PARK_COLORS[0].value,
-      hat: "none",
-      accessory: "none",
-      x: winW * 0.5,
-      y: winH * 0.75,
-      emote: null,
-      emoteUntil: 0,
-      lastSeen: Date.now(),
-    };
+    const p = deriveParkPetFromUser(user);
+    if (typeof window !== 'undefined') {
+      p.x = window.innerWidth * 0.5;
+      p.y = window.innerHeight * 0.75;
+    }
+    return p;
   });
-  const petId = myPet.id;
   const [otherPets, setOtherPets] = useState([]);
   const [storageWorks, setStorageWorks] = useState(true);
   const [regulars, setRegulars] = useState(() =>
-    REGULARS.map(r => ({ ...r, x: r.home.x, y: r.home.y, emote: null, emoteUntil: 0 }))
+    PARK_REGULARS.map(r => ({ ...r, x: r.home.x, y: r.home.y, emote: null, emoteUntil: 0 }))
   );
   const [tappedRegular, setTappedRegular] = useState(null);
-  const [drops, setDrops] = useState(SEED_DROPS);
+  const [drops, setDrops] = useState(PARK_SEED_DROPS);
   const [tappedDrop, setTappedDrop] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerType, setPickerType] = useState("flower");
@@ -13872,38 +13845,16 @@ function HatchWorldOverlay({ user, onClose }) {
   const myPetRef = useRef(null);
   const sceneRef = useRef(null);
   const mapScrollRef = useRef(null);
+  const petId = myPet.id;
 
   useEffect(() => { myPetRef.current = myPet; }, [myPet]);
-  // Keep myPet in sync if user edits petName/petColor in HatchTeen
+
+  // Re-derive pet if user identity changes (e.g. they edited petName/petColor in HatchTeen)
   useEffect(() => {
-    if (!user) return;
-    setMyPet(prev => prev ? {
-      ...prev,
-      name: (user.petName || prev.name).slice(0, 12),
-      color: user.petColor || prev.color,
-    } : prev);
-  }, [user && user.petName, user && user.petColor]);
+    setMyPet(prev => ({ ...prev, name: (user.petName || "Pet").slice(0, 12), color: user.petColor || prev.color }));
+  }, [user.petName, user.petColor]);
 
-
-  function makePet() {
-    const winW = typeof window !== "undefined" ? window.innerWidth : 1000;
-    const winH = typeof window !== "undefined" ? window.innerHeight : 800;
-    return {
-      id: petId, name: name.trim().slice(0, 12), color, hat, accessory,
-      x: winW * 0.4 + Math.random() * winW * 0.2,
-      y: winH * 0.7 + Math.random() * winH * 0.05,
-      emote: null, emoteUntil: 0, lastSeen: Date.now(),
-    };
-  }
-
-  function startWorld() {
-    if (!name.trim()) return;
-    const code = (cohortCode.trim() || "demo").toLowerCase();
-    setCohortCode(code);
-    setStage("map");
-  }
-
-  // measure the map area, set SVG dimensions, and scroll to rooftop — combined to avoid race conditions
+  // Map scroll: centre on rooftop (the only open location)
   useEffect(() => {
     if (stage !== "map") return;
     let cancelled = false;
@@ -13917,28 +13868,28 @@ function HatchWorldOverlay({ user, onClose }) {
       const w = Math.round(h * 2);
       setSvgDims({ w, h: Math.round(h) });
 
-      // only scroll once, after dimensions have been set and the SVG has had a frame to rerender
       if (!scrolledOnce) {
         scrolledOnce = true;
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             if (cancelled || !mapScrollRef.current) return;
-            const rooftop = MAP_LOCATIONS.find(l => l.id === "rooftop");
+            const rooftop = PARK_MAP_LOCATIONS.find(l => l.id === "rooftop");
             const containerWidth = mapScrollRef.current.clientWidth;
             const target = (rooftop.mapX * w / 1800) - containerWidth / 2;
-            mapScrollRef.current.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+            const left = Math.max(0, target);
+            // Use direct assignment for in-app browser compatibility (Messenger,
+            // FB, IG webviews don't reliably support scrollTo with behavior:smooth)
+            try { mapScrollRef.current.scrollTo({ left, behavior: "auto" }); } catch (e) {}
+            mapScrollRef.current.scrollLeft = left;
           });
         });
       }
     };
 
-    // initial pass
     updateAndMaybeScroll();
-    // safety re-runs in case layout settles late
     const t1 = setTimeout(updateAndMaybeScroll, 50);
     const t2 = setTimeout(updateAndMaybeScroll, 200);
 
-    // observe resize for rotation / window changes
     let observer;
     if (typeof ResizeObserver !== "undefined" && mapScrollRef.current) {
       observer = new ResizeObserver(() => {
@@ -13956,27 +13907,50 @@ function HatchWorldOverlay({ user, onClose }) {
     };
   }, [stage]);
 
-  function handleLocationTap(loc) {
-    setTappedLocation(loc);
-  }
+  function handleLocationTap(loc) { setTappedLocation(loc); }
 
   function enterLocation(loc) {
     if (loc.status === "soon") return;
-    if (!myPet) setMyPet(makePet());
+    // Position the pet inside the rooftop scene
+    if (typeof window !== "undefined") {
+      const winW = window.innerWidth, winH = window.innerHeight;
+      setMyPet(p => ({
+        ...p,
+        x: winW * 0.4 + Math.random() * winW * 0.2,
+        y: winH * 0.7 + Math.random() * winH * 0.05,
+      }));
+    }
     setTappedLocation(null);
     setStage(loc.id);
   }
 
-  // ===== rooftop logic =====
+  // ===== rooftop bot logic =====
   useEffect(() => {
     if (stage !== "rooftop") return;
+    // STEP 1: Immediately scale bot positions to actual scene size so they're
+    // visible on first render. Without this, bots use raw coords (e.g. x:600)
+    // which are off-screen on a phone.
+    const w = typeof window !== "undefined" ? window.innerWidth : 400;
+    const h = typeof window !== "undefined" ? window.innerHeight : 800;
+    setRegulars(PARK_REGULARS.map(r => {
+      const baseX = (r.home.x / 1000) * w;
+      const baseY = (r.home.y / 800) * h;
+      return {
+        ...r,
+        x: Math.max(80, Math.min(w - 80, baseX)),
+        y: Math.max(h * 0.62, Math.min(h - 60, baseY)),
+        emote: null, emoteUntil: 0,
+      };
+    }));
+
+    // STEP 2: Schedule the recurring wander animation
     const timeouts = [];
-    REGULARS.forEach((r, idx) => {
+    PARK_REGULARS.forEach((r, idx) => {
       const animate = () => {
-        const w = window.innerWidth, h = window.innerHeight;
-        const baseX = (r.home.x / 1000) * w, baseY = (r.home.y / 800) * h;
-        const x = Math.max(80, Math.min(w - 80, baseX + (Math.random() - 0.5) * r.wander));
-        const y = Math.max(h * 0.62, Math.min(h - 60, baseY + (Math.random() - 0.5) * 50));
+        const w2 = window.innerWidth, h2 = window.innerHeight;
+        const baseX = (r.home.x / 1000) * w2, baseY = (r.home.y / 800) * h2;
+        const x = Math.max(80, Math.min(w2 - 80, baseX + (Math.random() - 0.5) * r.wander));
+        const y = Math.max(h2 * 0.62, Math.min(h2 - 60, baseY + (Math.random() - 0.5) * 50));
         const shouldEmote = Math.random() < r.emoteChance;
         const emote = shouldEmote ? r.favEmotes[Math.floor(Math.random() * r.favEmotes.length)] : null;
         setRegulars(prev => prev.map(p => p.id === r.id ? { ...p, x, y, emote, emoteUntil: emote ? Date.now() + 3000 : 0 } : p));
@@ -14009,8 +13983,10 @@ function HatchWorldOverlay({ user, onClose }) {
     }));
   }, [myPet?.emote]);
 
+  // ===== shared multiplayer storage (window.storage) — gracefully degrades =====
   useEffect(() => {
     if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) { setStorageWorks(false); return; }
     const key = `world:${cohortCode}:rooftop:pets:${petId}`;
     const write = async () => {
       if (!myPetRef.current) return;
@@ -14024,12 +14000,14 @@ function HatchWorldOverlay({ user, onClose }) {
 
   useEffect(() => {
     if (stage !== "rooftop" || !myPet) return;
+    if (typeof window === "undefined" || !window.storage) return;
     const key = `world:${cohortCode}:rooftop:pets:${petId}`;
-    window.storage?.set?.(key, JSON.stringify({ ...myPet, lastSeen: Date.now() }), true).catch(() => setStorageWorks(false));
+    window.storage.set(key, JSON.stringify({ ...myPet, lastSeen: Date.now() }), true).catch(() => setStorageWorks(false));
   }, [myPet?.x, myPet?.y, myPet?.emote]);
 
   useEffect(() => {
     if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) return;
     const read = async () => {
       try {
         const result = await window.storage.list(`world:${cohortCode}:rooftop:pets:`, true);
@@ -14064,6 +14042,7 @@ function HatchWorldOverlay({ user, onClose }) {
 
   useEffect(() => {
     if (stage !== "rooftop") return;
+    if (typeof window === "undefined" || !window.storage) return;
     const read = async () => {
       try {
         const result = await window.storage.list(`world:${cohortCode}:rooftop:drops:`, true);
@@ -14075,7 +14054,7 @@ function HatchWorldOverlay({ user, onClose }) {
             if (r?.value) {
               const d = JSON.parse(r.value);
               const age = Date.now() - d.timestamp;
-              if (age < DROP_TTL_MS) fetched.push(d);
+              if (age < PARK_DROP_TTL_MS) fetched.push(d);
               else window.storage.delete(k, true).catch(() => {});
             }
           } catch (e) {}
@@ -14097,14 +14076,16 @@ function HatchWorldOverlay({ user, onClose }) {
     if (!sceneEl) return;
     const rect = sceneEl.getBoundingClientRect();
     const drop = {
-      id: generateDropId(), type: pickerType,
+      id: parkGenerateDropId(), type: pickerType,
       x: Math.max(0.05, Math.min(0.95, myPet.x / rect.width)),
       y: Math.max(0.6, Math.min(0.95, myPet.y / rect.height)),
       caption: pickerCaption, fromName: myPet.name, fromColor: myPet.color, timestamp: Date.now(),
     };
     setDrops(prev => [...prev, drop]);
-    const key = `world:${cohortCode}:rooftop:drops:${drop.id}`;
-    window.storage?.set?.(key, JSON.stringify(drop), true).catch(() => setStorageWorks(false));
+    if (typeof window !== "undefined" && window.storage) {
+      const key = `world:${cohortCode}:rooftop:drops:${drop.id}`;
+      window.storage.set(key, JSON.stringify(drop), true).catch(() => setStorageWorks(false));
+    }
     setPickerOpen(false);
     setJustDropped(drop);
     setTimeout(() => setJustDropped(null), 2400);
@@ -14133,88 +14114,16 @@ function HatchWorldOverlay({ user, onClose }) {
     @keyframes dropFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
     @keyframes dropPulse { 0%, 100% { filter: drop-shadow(0 0 4px rgba(255, 224, 102, 0.4)); } 50% { filter: drop-shadow(0 0 12px rgba(255, 224, 102, 0.8)); } }
     @keyframes pulse { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
-    @keyframes twinkle { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
     @keyframes mapPet { 0%, 100% { transform: translate(-50%, -100%) translateY(0); } 50% { transform: translate(-50%, -100%) translateY(-2px); } }
     @keyframes smoke { 0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.4; } 100% { transform: translateY(-15px) translateX(5px) scale(1.5); opacity: 0; } }
-    @keyframes neonFlicker { 0%, 100% { opacity: 1; } 92%, 94% { opacity: 0.4; } 96% { opacity: 1; } }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   `;
 
-  // ===== ENTRY =====
-  if (stage === "entry") {
-    const previewPet = { color, hat, accessory };
-    return (
-      <div className="flex items-center justify-center p-6"
-        style={{ position: "fixed", inset: 0, zIndex: 50, overflow: "auto",
-                 background: "linear-gradient(160deg, #2D1B4E 0%, #5C2A6B 35%, #C44A6E 70%, #E89868 100%)", fontFamily: "'Outfit', sans-serif" }}>
-        <style>{fontStyles}</style>
-        <div className="rounded-3xl p-7 max-w-md w-full" style={{
-          background: "rgba(255, 248, 232, 0.06)", backdropFilter: "blur(20px)",
-          border: "1px solid rgba(255, 248, 232, 0.18)", boxShadow: "0 24px 64px rgba(20, 10, 40, 0.5)",
-        }}>
-          <div className="flex items-baseline justify-between mb-1">
-            <h1 style={{ fontFamily: "'Caprasimo', cursive", color: "#FFF8E8", fontSize: "34px" }}>Hatch</h1>
-            <button onClick={onClose} aria-label="Close" style={{
-              background: "rgba(255, 248, 232, 0.1)", color: "rgba(255, 248, 232, 0.85)",
-              border: "1px solid rgba(255, 248, 232, 0.2)", borderRadius: "999px",
-              width: "32px", height: "32px", fontSize: "16px", lineHeight: 1, cursor: "pointer",
-            }}>✕</button>
-          </div>
-          <p style={{ color: "rgba(255, 248, 232, 0.65)", marginBottom: "24px", fontSize: "14px" }}>
-            Five places to wander. The map is waiting.
-          </p>
-
-          <div className="rounded-2xl p-4 mb-5 flex items-center gap-4 relative overflow-hidden" style={{
-            background: "linear-gradient(135deg, rgba(45, 27, 78, 0.5), rgba(196, 74, 110, 0.3))",
-            border: "1px solid rgba(255, 248, 232, 0.12)",
-          }}>
-            <div style={{ animation: "idle 2.6s ease-in-out infinite", position: "relative", zIndex: 2 }}>
-              <PetSVG pet={previewPet} size={92} />
-            </div>
-            <div className="flex-1" style={{ position: "relative", zIndex: 2 }}>
-              <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "22px", color: "#FFF8E8" }}>{name || "Your pet"}</div>
-              <div style={{ fontSize: "12px", color: "rgba(255, 248, 232, 0.6)", marginTop: "2px" }}>Loaded from Hatch</div>
-            </div>
-          </div>
-
-          <FormLabel>Name</FormLabel>
-          <Input value={name} onChange={e => setName(e.target.value)} placeholder="Pickle" maxLength={12} />
-          <FormLabel>Body</FormLabel>
-          <div className="flex gap-2 mb-5 flex-wrap">
-            {PARK_COLORS.map(c => (
-              <button key={c.value} onClick={() => setColor(c.value)} className="rounded-full transition-all" style={{
-                width: "32px", height: "32px", background: c.value,
-                border: color === c.value ? "2px solid #FFF8E8" : "2px solid transparent",
-                boxShadow: color === c.value ? `0 0 0 3px rgba(255, 248, 232, 0.15), 0 0 12px ${c.value}` : "none",
-                transform: color === c.value ? "scale(1.1)" : "scale(1)",
-              }} />
-            ))}
-          </div>
-          <FormLabel>Hat</FormLabel>
-          <ChipRow options={HATS} value={hat} onChange={setHat} />
-          <FormLabel>Accessory</FormLabel>
-          <ChipRow options={ACCESSORIES} value={accessory} onChange={setAccessory} />
-          <FormLabel>Cohort</FormLabel>
-          <Input value={cohortCode} onChange={e => setCohortCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="demo" maxLength={20} />
-
-          <button onClick={startWorld} disabled={!name.trim()} className="w-full py-3.5 rounded-2xl transition-all" style={{
-            background: name.trim() ? "linear-gradient(135deg, #E0A95C, #C4744A)" : "rgba(255, 248, 232, 0.1)",
-            color: "#FFF8E8", fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: "16px",
-            boxShadow: name.trim() ? "0 8px 24px rgba(196, 116, 74, 0.4)" : "none",
-            cursor: name.trim() ? "pointer" : "not-allowed", border: "none",
-          }}>
-            Open the map →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // ===== MAP =====
   if (stage === "map") {
     return (
-      <div className="flex flex-col overflow-hidden" style={{ position: "fixed", inset: 0, zIndex: 50, fontFamily: "'Outfit', sans-serif", background: "#0F0820" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "#0F0820", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
         <style>{fontStyles}</style>
 
         {/* Header */}
@@ -14222,37 +14131,35 @@ function HatchWorldOverlay({ user, onClose }) {
           background: "rgba(15, 8, 32, 0.7)", backdropFilter: "blur(16px)",
           borderBottom: "1px solid rgba(255, 248, 232, 0.1)",
         }}>
-          <div>
-            <div style={{ fontFamily: "'Caprasimo', cursive", color: "#FFF8E8", fontSize: "20px" }}>
-              Where to, {name}?
-            </div>
-            <div className="text-[11px]" style={{ color: "rgba(255, 248, 232, 0.55)", fontWeight: 500 }}>
-              cohort <span style={{ color: "#E0A95C", fontWeight: 600 }}>{cohortCode}</span> · scroll to wander
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setStage("entry")} className="text-xs px-3 py-1.5 rounded-full" style={{
-              background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.7)",
-              border: "1px solid rgba(255, 248, 232, 0.15)",
-            }}>
-              Edit pet
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5"
+              style={{ background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.85)",
+                border: "1px solid rgba(255, 248, 232, 0.15)", fontWeight: 600, cursor: "pointer" }}>
+              ← Back
             </button>
-            <button onClick={onClose} aria-label="Close" className="text-base rounded-full flex items-center justify-center" style={{
-              width: "32px", height: "32px",
-              background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.9)",
-              border: "1px solid rgba(255, 248, 232, 0.15)", lineHeight: 1,
-            }}>
-              ✕
-            </button>
+            <div>
+              <div style={{ fontFamily: "'Caprasimo', cursive", color: "#FFF8E8", fontSize: "20px" }}>
+                Where to, {myPet.name}?
+              </div>
+              <div className="text-[11px]" style={{ color: "rgba(255, 248, 232, 0.55)", fontWeight: 500 }}>
+                The Park · scroll to wander
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Map (scrollable landscape) */}
         <div ref={mapScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden no-scrollbar relative"
-          style={{ overscrollBehavior: "contain", touchAction: "pan-x" }}>
+          style={{
+            overscrollBehavior: "contain",
+            touchAction: "pan-x",
+            minWidth: 0,
+            minHeight: 0,
+            WebkitOverflowScrolling: "touch",
+          }}>
           <svg viewBox="0 0 1800 900" preserveAspectRatio="xMidYMid meet"
             width={svgDims.w} height={svgDims.h}
-            style={{ display: "block" }}
+            style={{ display: "block", flexShrink: 0, touchAction: "pan-x" }}
             onClick={() => setTappedLocation(null)}>
             <defs>
               <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -14292,71 +14199,58 @@ function HatchWorldOverlay({ user, onClose }) {
               </linearGradient>
             </defs>
 
-            {/* sky */}
             <rect width="1800" height="900" fill="url(#skyGrad)" />
 
-            {/* stars in upper area */}
             {Array.from({ length: 80 }).map((_, i) => {
-              const x = Math.random() * 1800, y = Math.random() * 350;
-              const r = Math.random() * 1.2 + 0.4;
-              return <circle key={i} cx={x} cy={y} r={r} fill="white" opacity={0.5 + Math.random() * 0.5} />;
+              // Deterministic positions (was Math.random — caused flicker)
+              const x = (i * 211) % 1800, y = (i * 67) % 350;
+              const r = 0.4 + ((i * 19) % 12) / 10;
+              return <circle key={i} cx={x} cy={y} r={r} fill="white" opacity={0.5 + ((i * 31) % 50) / 100} />;
             })}
 
-            {/* sun behind */}
             <circle cx="900" cy="500" r="80" fill="#FFE066" opacity="0.4" />
             <circle cx="900" cy="500" r="50" fill="#FFEFA8" opacity="0.6" />
 
-            {/* far mountains */}
             <path d="M 0 500 L 150 380 L 280 460 L 420 360 L 580 440 L 720 380 L 880 420 L 1040 360 L 1200 430 L 1360 380 L 1520 440 L 1680 390 L 1800 430 L 1800 600 L 0 600 Z"
               fill="#1A0F33" opacity="0.6" />
 
-            {/* near mountains */}
             <path d="M 0 580 L 200 480 L 380 530 L 540 460 L 720 510 L 920 470 L 1100 520 L 1280 470 L 1480 510 L 1680 480 L 1800 510 L 1800 700 L 0 700 Z"
               fill="#2D1B4E" opacity="0.7" />
 
-            {/* hills mid-ground */}
             <ellipse cx="540" cy="600" rx="280" ry="80" fill="#4D6B4F" />
             <ellipse cx="540" cy="595" rx="240" ry="60" fill="#5C7B5E" />
             <ellipse cx="1100" cy="650" rx="200" ry="60" fill="#4D5C7F" opacity="0.7" />
             <ellipse cx="1500" cy="640" rx="180" ry="55" fill="#5C3D5C" opacity="0.6" />
 
-            {/* ocean for beach area */}
             <path d="M 0 720 Q 100 715 220 720 L 350 730 L 350 900 L 0 900 Z" fill="url(#oceanGrad)" />
-            {/* ocean wave lines */}
             <path d="M 0 740 Q 80 736 180 740 Q 260 744 350 740" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" fill="none" />
             <path d="M 0 760 Q 100 758 200 760 Q 280 762 350 760" stroke="rgba(255,255,255,0.2)" strokeWidth="0.8" fill="none" />
             <path d="M 0 780 Q 90 778 200 780 Q 280 782 350 780" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" fill="none" />
 
-            {/* main ground */}
             <path d="M 0 720 Q 100 715 220 720 L 350 730 L 600 700 L 900 720 L 1200 705 L 1500 715 L 1800 700 L 1800 900 L 0 900 Z"
               fill="url(#groundGrad)" />
 
-            {/* path winding through */}
             <path d="M 200 840 Q 380 820 540 800 Q 720 780 880 760 Q 1050 750 1220 770 Q 1400 790 1560 800 L 1800 820"
               stroke="#7B5337" strokeWidth="14" fill="none" strokeLinecap="round" opacity="0.6" />
             <path d="M 200 840 Q 380 820 540 800 Q 720 780 880 760 Q 1050 750 1220 770 Q 1400 790 1560 800 L 1800 820"
               stroke="#A07B5C" strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray="3 8" opacity="0.5" />
 
-            {/* clouds */}
             <ellipse cx="300" cy="200" rx="50" ry="12" fill="white" opacity="0.6" />
             <ellipse cx="320" cy="195" rx="35" ry="14" fill="white" opacity="0.6" />
             <ellipse cx="1100" cy="250" rx="45" ry="11" fill="white" opacity="0.5" />
             <ellipse cx="1120" cy="245" rx="30" ry="13" fill="white" opacity="0.5" />
             <ellipse cx="1500" cy="180" rx="55" ry="13" fill="white" opacity="0.5" />
 
-            {/* tiny birds */}
             <path d="M 600 220 Q 605 215 610 220 Q 615 215 620 220" stroke="#1A0F33" strokeWidth="1.5" fill="none" />
             <path d="M 1300 200 Q 1305 195 1310 200 Q 1315 195 1320 200" stroke="#1A0F33" strokeWidth="1.5" fill="none" />
 
-            {/* The five landmarks */}
-            {MAP_LOCATIONS.map(loc => {
-              const Comp = LANDMARK_COMPONENTS[loc.id];
+            {PARK_MAP_LOCATIONS.map(loc => {
+              const Comp = PARK_LANDMARK_COMPONENTS[loc.id];
               return <Comp key={loc.id} x={loc.mapX} y={loc.mapY} isOpen={loc.status === "open"}
                 onTap={(e) => { e.stopPropagation(); handleLocationTap(loc); }} />;
             })}
 
-            {/* Location labels (always visible above each) */}
-            {MAP_LOCATIONS.map(loc => (
+            {PARK_MAP_LOCATIONS.map(loc => (
               <g key={`label-${loc.id}`} transform={`translate(${loc.mapX}, ${loc.mapY - 160})`}
                 style={{ cursor: "pointer", pointerEvents: "auto" }}
                 onClick={(e) => { e.stopPropagation(); handleLocationTap(loc); }}>
@@ -14378,18 +14272,17 @@ function HatchWorldOverlay({ user, onClose }) {
               </g>
             ))}
 
-            {/* User's pet on map (hovering near rooftop, the open one) */}
+            {/* Pet preview hovering near rooftop */}
             {(() => {
-              const previewPet = { color, hat, accessory, name };
-              const rooftop = MAP_LOCATIONS.find(l => l.id === "rooftop");
+              const rooftop = PARK_MAP_LOCATIONS.find(l => l.id === "rooftop");
               return (
                 <g transform={`translate(${rooftop.mapX - 100}, ${rooftop.mapY + 30})`} style={{ animation: "mapPet 2.6s ease-in-out infinite" }}>
                   <foreignObject x="-30" y="-65" width="60" height="70">
-                    <PetSVG pet={previewPet} size={56} />
+                    <ParkPetSVG pet={myPet} size={56} />
                   </foreignObject>
                   <rect x="-30" y="8" width="60" height="16" rx="8" fill="#F4B740" stroke="#1A0F2E" strokeWidth="1" />
                   <text x="0" y="19" textAnchor="middle" fontFamily="'Outfit', sans-serif" fontSize="10" fontWeight="700" fill="#1A0F2E">
-                    {name} · you
+                    {myPet.name} · you
                   </text>
                 </g>
               );
@@ -14402,7 +14295,7 @@ function HatchWorldOverlay({ user, onClose }) {
           <>
             <div className="absolute inset-0 z-40" style={{ background: "rgba(15, 8, 32, 0.5)", backdropFilter: "blur(4px)" }}
               onClick={() => setTappedLocation(null)} />
-            <div className="absolute left-1/2 -translate-x-1/2 z-50 rounded-3xl p-6 max-w-[340px] w-[88vw]"
+            <div className="absolute left-1/2 z-50 rounded-3xl p-6 max-w-[340px] w-[88vw]"
               style={{
                 top: "50%", transform: "translate(-50%, -50%)",
                 background: "rgba(15, 8, 32, 0.95)", backdropFilter: "blur(20px)",
@@ -14435,14 +14328,54 @@ function HatchWorldOverlay({ user, onClose }) {
               </p>
 
               {tappedLocation.status === "open" && (
-                <div className="flex gap-3 mb-4 text-[12px]">
-                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
-                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{otherPets.length + 1 + regulars.length}</span> pets here
+                <>
+                  {/* Pet picker — shows the teen which pet is going. Currently
+                      shows the one pet they have; structured for future
+                      multi-pet support. */}
+                  <div style={{
+                    background: "rgba(255, 248, 232, 0.04)",
+                    border: "1px solid rgba(255, 248, 232, 0.1)",
+                    borderRadius: 16, padding: 12, marginBottom: 14,
+                  }}>
+                    <div style={{
+                      fontSize: "10px", color: "rgba(255, 248, 232, 0.5)",
+                      letterSpacing: "0.1em", textTransform: "uppercase",
+                      fontWeight: 600, marginBottom: 8,
+                    }}>Take this pet</div>
+                    <div className="flex items-center gap-3">
+                      <div style={{
+                        background: `radial-gradient(circle, ${myPet.color}30 0%, transparent 70%)`,
+                        borderRadius: "50%", padding: 4,
+                        border: `2px solid ${myPet.color}`,
+                      }}>
+                        <ParkPetSVG pet={myPet} size={56} />
+                      </div>
+                      <div className="flex-1">
+                        <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "20px", color: "#FFF8E8" }}>
+                          {myPet.name}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", marginTop: 2 }}>
+                          ready to wander
+                        </div>
+                      </div>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: "50%",
+                        background: "#5FD48A",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, color: "#1A0F2E", fontWeight: 700,
+                      }}>✓</div>
+                    </div>
                   </div>
-                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
-                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{drops.length}</span> gifts waiting
+
+                  <div className="flex gap-3 mb-4 text-[12px]">
+                    <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                      <span style={{ color: "#E0A95C", fontWeight: 700 }}>{otherPets.length + 1 + regulars.length}</span> pets here
+                    </div>
+                    <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                      <span style={{ color: "#E0A95C", fontWeight: 700 }}>{drops.length}</span> gifts waiting
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.45)", marginBottom: "20px", letterSpacing: "0.04em" }}>
@@ -14460,10 +14393,10 @@ function HatchWorldOverlay({ user, onClose }) {
                   border: tappedLocation.status === "open" ? "none" : "1px solid rgba(255, 248, 232, 0.12)",
                   cursor: tappedLocation.status === "open" ? "pointer" : "not-allowed",
                 }}>
-                {tappedLocation.status === "open" ? `Take ${name} here →` : "Opens soon"}
+                {tappedLocation.status === "open" ? `Take ${myPet.name} here →` : "Opens soon"}
               </button>
               <button onClick={() => setTappedLocation(null)} className="w-full text-xs mt-2 py-1.5"
-                style={{ color: "rgba(255, 248, 232, 0.5)", fontWeight: 500 }}>
+                style={{ color: "rgba(255, 248, 232, 0.5)", fontWeight: 500, background: "none", border: "none", cursor: "pointer" }}>
                 close
               </button>
             </div>
@@ -14483,9 +14416,9 @@ function HatchWorldOverlay({ user, onClose }) {
     );
   }
 
-  // ===== ROOFTOP =====
+  // ===== ROOFTOP (default for any opened location since only rooftop is "open") =====
   return (
-    <div className="flex flex-col overflow-hidden" style={{ position: "fixed", inset: 0, zIndex: 50, fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Outfit', sans-serif", animation: "sceneIn 0.3s ease-out" }}>
       <style>{fontStyles}</style>
 
       <div className="px-5 py-3 flex items-center justify-between" style={{
@@ -14496,7 +14429,7 @@ function HatchWorldOverlay({ user, onClose }) {
           <button onClick={() => setStage("map")} className="px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5"
             style={{
               background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.85)",
-              border: "1px solid rgba(255, 248, 232, 0.15)", fontWeight: 600,
+              border: "1px solid rgba(255, 248, 232, 0.15)", fontWeight: 600, cursor: "pointer",
             }}>
             ← Map
           </button>
@@ -14507,27 +14440,27 @@ function HatchWorldOverlay({ user, onClose }) {
             </div>
           </div>
         </div>
-        <button onClick={() => setStage("entry")} className="text-xs px-3 py-1.5 rounded-full"
+        <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-full"
           style={{
             background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.7)",
-            border: "1px solid rgba(255, 248, 232, 0.15)",
+            border: "1px solid rgba(255, 248, 232, 0.15)", cursor: "pointer",
           }}>
           Leave
         </button>
       </div>
 
       <div ref={sceneRef} className="flex-1 relative cursor-pointer overflow-hidden" onClick={handleClick}
-        style={{ background: "linear-gradient(180deg, #1A0F33 0%, #3D1B4E 18%, #7B2A5C 38%, #C44A6E 58%, #E89868 78%, #F4C490 100%)" }}>
-        <Stars />
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0, background: "linear-gradient(180deg, #1A0F33 0%, #3D1B4E 18%, #7B2A5C 38%, #C44A6E 58%, #E89868 78%, #F4C490 100%)" }}>
+        <ParkStars />
         <div className="absolute pointer-events-none" style={{
           bottom: "320px", left: "50%", transform: "translateX(-50%)",
           width: "180px", height: "180px", borderRadius: "50%",
           background: "radial-gradient(circle, #FFE066 0%, #E89868 40%, transparent 70%)",
           filter: "blur(2px)", animation: "glow 4s ease-in-out infinite",
         }} />
-        <CitySkyline />
-        <Railing />
-        <FairyLights y={50} count={10} />
+        <ParkCitySkyline />
+        <ParkRailing />
+        <ParkFairyLights y={50} count={10} />
 
         <div className="absolute left-0 right-0 bottom-0 pointer-events-none" style={{ height: "240px" }}>
           <svg className="w-full h-full" viewBox="0 0 1000 240" preserveAspectRatio="none">
@@ -14548,17 +14481,17 @@ function HatchWorldOverlay({ user, onClose }) {
           </svg>
         </div>
 
-        <PottedPlant left="4%" bottom={190} kind="monstera" />
-        <PottedPlant left="87%" bottom={190} kind="grass" />
-        <PottedPlant left="13%" bottom={70} kind="grass" />
-        <PottedPlant left="82%" bottom={75} kind="monstera" />
-        <Bench left="22%" bottom={130} />
-        <Boombox left="58%" bottom={140} />
+        <ParkPottedPlant left="4%" bottom={190} kind="monstera" />
+        <ParkPottedPlant left="87%" bottom={190} kind="grass" />
+        <ParkPottedPlant left="13%" bottom={70} kind="grass" />
+        <ParkPottedPlant left="82%" bottom={75} kind="monstera" />
+        <ParkBench left="22%" bottom={130} />
+        <ParkBoombox left="58%" bottom={140} />
 
-        {drops.map(d => <Drop key={d.id} drop={d} onTap={(drop) => setTappedDrop(drop)} />)}
-        {regulars.map(r => <Pet key={r.id} pet={r} isBot={true} onTap={() => setTappedRegular(r)} />)}
-        {otherPets.map(p => <Pet key={p.id} pet={p} isMe={false} />)}
-        {myPet && <Pet pet={myPet} isMe={true} />}
+        {drops.map(d => <ParkDrop key={d.id} drop={d} onTap={(drop) => setTappedDrop(drop)} />)}
+        {regulars.map(r => <ParkPet key={r.id} pet={r} isBot={true} onTap={() => setTappedRegular(r)} />)}
+        {otherPets.map(p => <ParkPet key={p.id} pet={p} isMe={false} />)}
+        {myPet && <ParkPet pet={myPet} isMe={true} />}
 
         {tappedDrop && (
           <div className="absolute left-1/2 px-5 py-4 rounded-2xl pointer-events-auto" style={{
@@ -14569,7 +14502,7 @@ function HatchWorldOverlay({ user, onClose }) {
             animation: "fadeUp 0.3s ease-out", maxWidth: "280px", minWidth: "240px", zIndex: 50,
           }} onClick={(e) => { e.stopPropagation(); setTappedDrop(null); }}>
             <div className="flex items-center gap-3 mb-2">
-              <DropIcon type={tappedDrop.type} size={36} />
+              <ParkDropIcon type={tappedDrop.type} size={36} />
               <div className="flex-1">
                 <div style={{ fontSize: "10px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase" }}>From</div>
                 <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "18px", color: tappedDrop.fromColor }}>
@@ -14588,7 +14521,7 @@ function HatchWorldOverlay({ user, onClose }) {
               </div>
             )}
             <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.4)", marginTop: "10px" }}>
-              {timeAgo(tappedDrop.timestamp)} · tap to dismiss
+              {parkTimeAgo(tappedDrop.timestamp)} · tap to dismiss
             </div>
           </div>
         )}
@@ -14621,11 +14554,12 @@ function HatchWorldOverlay({ user, onClose }) {
         background: "rgba(20, 10, 40, 0.65)", backdropFilter: "blur(16px)",
         borderTop: "1px solid rgba(255, 248, 232, 0.1)",
       }}>
-        {EMOTES.map(e => (
+        {PARK_EMOTES.map(e => (
           <button key={e.id} onClick={() => doEmote(e.id)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{
             width: "54px", height: "52px",
             background: myPet?.emote === e.id ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.06)",
             border: myPet?.emote === e.id ? "1px solid rgba(224, 169, 92, 0.5)" : "1px solid rgba(255, 248, 232, 0.1)",
+            cursor: "pointer",
           }}>
             <span style={{ fontSize: "20px", lineHeight: 1, color: "#FFF8E8" }}>{e.emoji}</span>
             <span style={{ fontSize: "9px", marginTop: "2px", color: "rgba(255, 248, 232, 0.7)" }}>{e.label}</span>
@@ -14635,7 +14569,7 @@ function HatchWorldOverlay({ user, onClose }) {
         <button onClick={() => setPickerOpen(true)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{
           width: "62px", height: "52px",
           background: "linear-gradient(135deg, rgba(224, 169, 92, 0.25), rgba(196, 74, 110, 0.25))",
-          border: "1px solid rgba(224, 169, 92, 0.5)",
+          border: "1px solid rgba(224, 169, 92, 0.5)", cursor: "pointer",
         }}>
           <span style={{ fontSize: "18px", lineHeight: 1, color: "#FFE066" }}>✦</span>
           <span style={{ fontSize: "9px", marginTop: "3px", color: "#E0A95C", fontWeight: 600 }}>Leave gift</span>
@@ -14653,20 +14587,21 @@ function HatchWorldOverlay({ user, onClose }) {
               <h3 style={{ fontFamily: "'Caprasimo', cursive", fontSize: "20px", color: "#FFF8E8" }}>Leave a gift</h3>
               <button onClick={() => setPickerOpen(false)} className="text-xs px-3 py-1 rounded-full" style={{
                 background: "rgba(255, 248, 232, 0.08)", color: "rgba(255, 248, 232, 0.7)",
-                border: "1px solid rgba(255, 248, 232, 0.15)",
+                border: "1px solid rgba(255, 248, 232, 0.15)", cursor: "pointer",
               }}>Cancel</button>
             </div>
 
             <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "8px" }}>Pick something</div>
             <div className="grid grid-cols-6 gap-2 mb-5">
-              {DROP_TYPES.map(t => {
+              {PARK_DROP_TYPES.map(t => {
                 const active = pickerType === t.id;
                 return (
                   <button key={t.id} onClick={() => setPickerType(t.id)} className="flex flex-col items-center justify-center py-3 rounded-2xl transition-all" style={{
                     background: active ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.05)",
                     border: active ? "1px solid rgba(224, 169, 92, 0.6)" : "1px solid rgba(255, 248, 232, 0.1)",
+                    cursor: "pointer",
                   }}>
-                    <DropIcon type={t.id} size={28} />
+                    <ParkDropIcon type={t.id} size={28} />
                     <span style={{ fontSize: "10px", marginTop: "4px", color: active ? "#E0A95C" : "rgba(255, 248, 232, 0.6)", fontWeight: 500 }}>{t.label}</span>
                   </button>
                 );
@@ -14675,14 +14610,14 @@ function HatchWorldOverlay({ user, onClose }) {
 
             <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "8px" }}>Add a note (optional)</div>
             <div className="flex gap-1.5 mb-5 flex-wrap">
-              {CAPTIONS.map((c, i) => {
+              {PARK_CAPTIONS.map((c, i) => {
                 const active = pickerCaption === c;
                 return (
                   <button key={i} onClick={() => setPickerCaption(c)} className="rounded-full px-3.5 py-1.5 transition-all" style={{
                     background: active ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.05)",
                     border: active ? "1px solid rgba(224, 169, 92, 0.6)" : "1px solid rgba(255, 248, 232, 0.12)",
                     color: active ? "#E0A95C" : "rgba(255, 248, 232, 0.7)",
-                    fontSize: "12px", fontWeight: 500,
+                    fontSize: "12px", fontWeight: 500, cursor: "pointer",
                   }}>{c || "no note"}</button>
                 );
               })}
@@ -14691,51 +14626,13 @@ function HatchWorldOverlay({ user, onClose }) {
             <button onClick={createDrop} className="w-full py-3 rounded-2xl transition-all" style={{
               background: "linear-gradient(135deg, #E0A95C, #C4744A)",
               color: "#FFF8E8", fontFamily: "'Outfit', sans-serif", fontWeight: 600, fontSize: "15px",
-              boxShadow: "0 8px 24px rgba(196, 116, 74, 0.4)", border: "none",
+              boxShadow: "0 8px 24px rgba(196, 116, 74, 0.4)", border: "none", cursor: "pointer",
             }}>
               ✦ Drop it on the rooftop
             </button>
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function FormLabel({ children }) {
-  return (
-    <label className="block mb-1.5" style={{
-      fontSize: "11px", fontWeight: 600, color: "rgba(255, 248, 232, 0.55)",
-      letterSpacing: "0.1em", textTransform: "uppercase",
-    }}>{children}</label>
-  );
-}
-
-function Input(props) {
-  return (
-    <input type="text" {...props} className="w-full px-4 py-2.5 rounded-xl mb-5 outline-none transition-all" style={{
-      background: "rgba(255, 248, 232, 0.06)",
-      border: "1px solid rgba(255, 248, 232, 0.15)",
-      fontFamily: "'Outfit', sans-serif",
-      fontSize: "15px", fontWeight: 500, color: "#FFF8E8",
-    }} />
-  );
-}
-
-function ChipRow({ options, value, onChange }) {
-  return (
-    <div className="flex gap-1.5 mb-5 flex-wrap">
-      {options.map(o => {
-        const active = value === o.id;
-        return (
-          <button key={o.id} onClick={() => onChange(o.id)} className="rounded-full px-3.5 py-1.5 transition-all" style={{
-            background: active ? "rgba(224, 169, 92, 0.2)" : "rgba(255, 248, 232, 0.05)",
-            border: active ? "1px solid rgba(224, 169, 92, 0.6)" : "1px solid rgba(255, 248, 232, 0.12)",
-            color: active ? "#E0A95C" : "rgba(255, 248, 232, 0.7)",
-            fontSize: "12px", fontWeight: 500,
-          }}>{o.label}</button>
-        );
-      })}
     </div>
   );
 }
