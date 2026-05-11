@@ -48,6 +48,7 @@ const SURPRISE_BONUS_CHANCE = 0.20;
 const SHOP_CATEGORIES = [
   { id: 'all',       label: 'All',         emoji: '🛍️' },
   { id: 'hat',       label: 'Hats',        emoji: '🎩' },
+  { id: 'shirt',     label: 'Shirts',      emoji: '👕' },
   { id: 'accessory', label: 'Accessories', emoji: '💍' },
   { id: 'effect',    label: 'Effects',     emoji: '✨' },
 ];
@@ -80,6 +81,8 @@ function normalizeEquipped(eq) {
   }
   return out;
 }
+
+const IBSS_LOGO_B64 = 'data:image/png;base64,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';
 
 const SHOP_ITEMS = [
   // ─── HATS ──────────────────────────────────────────────────────────────
@@ -296,6 +299,29 @@ const SHOP_ITEMS = [
       </g>
     ),
   },
+  // ─── SHIRTS ────────────────────────────────────────────────────────────
+  {
+    id: 'ibss_tee', name: 'IBSS Tee', category: 'shirt', emoji: '👕',
+    cost: 0, desc: 'A gift from your IBSS team. Wear the swirl with pride.',
+    defaultColor: '#FFFFFF',
+    render: (c) => (
+      <g>
+        {/* White tee body — sits on torso between head and legs */}
+        <path d="M 65 110 Q 65 105 75 104 L 82 108 L 90 106 Q 100 110 110 106 L 118 108 L 125 104 Q 135 105 135 110 L 135 165 Q 135 170 128 170 L 72 170 Q 65 170 65 165 Z"
+              fill={c} stroke="#0d1825" strokeWidth="2.2" strokeLinejoin="round" />
+        {/* Sleeves */}
+        <ellipse cx="62" cy="118" rx="8" ry="11" fill={c} stroke="#0d1825" strokeWidth="2" />
+        <ellipse cx="138" cy="118" rx="8" ry="11" fill={c} stroke="#0d1825" strokeWidth="2" />
+        {/* Neckline shadow */}
+        <path d="M 82 108 L 90 106 Q 100 110 110 106 L 118 108 Q 110 116 100 116 Q 90 116 82 108 Z" fill="#0d1825" opacity="0.08" />
+        {/* IBSS logo on chest */}
+        <image href={IBSS_LOGO_B64} x="80" y="115" width="40" height="40" />
+        {/* "BEYOND" tagline below logo */}
+        <text x="100" y="162" textAnchor="middle" fontFamily="system-ui, sans-serif"
+              fontWeight="800" fontSize="5" fill="#0d1825" letterSpacing="0.6">BEYOND</text>
+      </g>
+    ),
+  },
 ];
 const RARE_SURPRISES = [
   { msg: (pet) => `✨ ${pet} did something magical!`, extra: 2 },
@@ -365,10 +391,11 @@ const ANIMALS = [
   { id: 'dragon', name: 'Dragon', emoji: '🐉', kind: 'fantasy' },
   { id: 'phoenix', name: 'Phoenix', emoji: '🔥', kind: 'fantasy' },
   { id: 'unicorn', name: 'Unicorn', emoji: '🦄', kind: 'fantasy' },
+  { id: 'platypus', name: 'IBSS', emoji: '🦫', kind: 'ibss' },
   { id: 'mystery', name: 'Mystery', emoji: '❓', kind: 'mystery' },
 ];
 
-const REAL_ANIMALS = ANIMALS.filter(a => a.id !== 'mystery');
+const REAL_ANIMALS = ANIMALS.filter(a => a.id !== 'mystery' && a.id !== 'platypus');
 
 function resolveMystery() {
   const type = REAL_ANIMALS[Math.floor(Math.random() * REAL_ANIMALS.length)].id;
@@ -1651,7 +1678,190 @@ function Unicorn({ color, mood = 'awake', chewing = false, variant = 'cute', win
   );
 }
 
-const ANIMAL_COMPONENTS = { dog: Dog, cat: Cat, rabbit: Rabbit, dragon: Dragon, phoenix: Phoenix, unicorn: Unicorn };
+// ────────────────────────────────────────────────────────────────────────────
+// PLATYPUS — IBSS branded pet. Always wears the brand swirl gradient.
+// Ignores the color prop. Has its own cute + dark variants.
+// ────────────────────────────────────────────────────────────────────────────
+function Platypus({ color, mood = 'awake', chewing = false, variant = 'cute', wingFlap = false }) {
+  const isLoaf = mood === 'sleep';
+  const isDark = variant === 'dark';
+  // IBSS brand fill — always the gradient, regardless of color prop
+  const fill = isDark ? 'url(#ibssGradientDark)' : 'url(#ibssGradient)';
+  const billFill = isDark ? '#5a2a00' : '#FFB020';
+  const billHighlight = isDark ? '#8B4500' : '#FFC850';
+  const webFill = isDark ? '#4a0a2a' : '#FFB020';
+
+  return (
+    <g>
+      <defs>
+        {/* IBSS brand gradient — diagonal sweep through the logo's four colours */}
+        <linearGradient id="ibssGradient" x1="20" y1="30" x2="180" y2="200" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stopColor="#7FD420" />
+          <stop offset="32%"  stopColor="#1FA89C" />
+          <stop offset="65%"  stopColor="#7B2D8E" />
+          <stop offset="100%" stopColor="#D6307D" />
+        </linearGradient>
+        {/* Dark variant — same hue path shifted to night tones */}
+        <linearGradient id="ibssGradientDark" x1="20" y1="30" x2="180" y2="200" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stopColor="#1a3008" />
+          <stop offset="32%"  stopColor="#0a2a26" />
+          <stop offset="65%"  stopColor="#2a0a3a" />
+          <stop offset="100%" stopColor="#4a0a2a" />
+        </linearGradient>
+      </defs>
+
+      {isDark && <SmokeWisp cx={50} cy={isLoaf ? 130 : 70} />}
+
+      {isLoaf ? (
+        // ── LOAF POSE ──────────────────────────────────────────────────────
+        <>
+          {/* Paddle tail behind body, peeking out */}
+          <g style={{ transformOrigin: '156px 175px', animation: 'tailLazyWag 4s ease-in-out infinite' }}>
+            <ellipse cx="170" cy="172" rx="22" ry="7" fill={fill} stroke={STROKE} strokeWidth="2.5" />
+            {!isDark && <ellipse cx="170" cy="170" rx="16" ry="3" fill="#fff" opacity="0.25" />}
+          </g>
+          <g style={{ transformOrigin: '100px 130px', animation: 'loafBreathe 4.5s ease-in-out infinite' }}>
+            {/* Loaf body */}
+            <path d={`M 40 188 L 44 145 Q 46 115 70 105 Q 100 96 130 105 Q 154 115 156 145 L 160 188 Z`}
+              fill={fill} stroke={STROKE} strokeWidth="2.8" strokeLinejoin="round" />
+            <ellipse cx="100" cy="160" rx="22" ry="14" fill={isDark ? DARK_BELLY : '#fff'} opacity={isDark ? 0.65 : 0.32} />
+            {/* Front webbed feet */}
+            <ellipse cx="82" cy="188" rx="11" ry="4" fill={fill} stroke={STROKE} strokeWidth="2.2" />
+            <path d={`M 73 190 Q 77 194 81 191 Q 85 194 89 191 Q 91 193 91 188`} fill={webFill} stroke={STROKE} strokeWidth="0.8" opacity="0.85" />
+            <ellipse cx="118" cy="188" rx="11" ry="4" fill={fill} stroke={STROKE} strokeWidth="2.2" />
+            <path d={`M 109 190 Q 113 194 117 191 Q 121 194 125 191 Q 127 193 127 188`} fill={webFill} stroke={STROKE} strokeWidth="0.8" opacity="0.85" />
+            {/* Head — low and forward */}
+            <path d={`M 60 120 Q 58 92 80 86 Q 100 81 120 86 Q 142 92 140 120 Q 137 138 100 140 Q 63 138 60 120 Z`}
+              fill={fill} stroke={STROKE} strokeWidth="2.8" strokeLinejoin="round" />
+            {/* Tiny fur tuft on top of head */}
+            {!isDark && (
+              <>
+                <path d={`M 92 88 Q 95 83 98 88`} stroke={STROKE} strokeWidth="1.6" fill="none" strokeLinecap="round" opacity="0.7" />
+                <path d={`M 102 86 Q 105 81 108 86`} stroke={STROKE} strokeWidth="1.6" fill="none" strokeLinecap="round" opacity="0.7" />
+              </>
+            )}
+            {isDark && (
+              <>
+                <path d={`M 92 88 L 94 80 L 96 88`} stroke={DARK_DARKER} strokeWidth="1.6" fill="none" />
+                <path d={`M 100 86 L 102 76 L 104 86`} stroke={DARK_DARKER} strokeWidth="1.8" fill="none" />
+                <path d={`M 108 88 L 110 80 L 112 88`} stroke={DARK_DARKER} strokeWidth="1.6" fill="none" />
+              </>
+            )}
+            {/* Half-lidded eyes */}
+            <LoafEyes cx={80} cy={113} variant={variant} />
+            <LoafEyes cx={120} cy={113} variant={variant} />
+            {/* Bill at the front of loaf face */}
+            <ellipse cx="100" cy="130" rx="22" ry="9" fill={billFill} stroke={STROKE} strokeWidth="2" />
+            <ellipse cx="100" cy="127" rx="17" ry="3" fill={billHighlight} opacity="0.55" />
+            <line x1="78" y1="130" x2="122" y2="130" stroke={STROKE} strokeWidth="0.7" opacity="0.5" />
+            {/* Nostrils on bill */}
+            <ellipse cx="94" cy="125" rx="1.2" ry="1.8" fill={STROKE} />
+            <ellipse cx="106" cy="125" rx="1.2" ry="1.8" fill={STROKE} />
+            {/* Cheeks (cute only) */}
+            {!isDark && (
+              <>
+                <CheekBlush cx={68} cy={120} variant={variant} />
+                <CheekBlush cx={132} cy={120} variant={variant} />
+              </>
+            )}
+            {isDark && <SpikedCollar cx={100} cy={140} w={26} />}
+          </g>
+        </>
+      ) : (
+        // ── STANDING POSE ──────────────────────────────────────────────────
+        <>
+          {/* Paddle tail extending behind body */}
+          <g style={{ transformOrigin: '155px 150px', animation: chewing ? 'none' : 'tailLazyWag 2.5s ease-in-out infinite' }}>
+            <ellipse cx="170" cy="148" rx="24" ry="9" fill={fill} stroke={STROKE} strokeWidth="2.5" />
+            {!isDark && <ellipse cx="170" cy="146" rx="18" ry="4" fill="#fff" opacity="0.28" />}
+            {isDark && (
+              <path d={`M 150 156 L 154 152 L 158 156 L 162 152 L 166 156 L 170 152 L 174 156 L 178 152 L 182 156 L 186 152 L 190 156`}
+                stroke={DARK_DARKER} strokeWidth="0.9" fill="none" opacity="0.6" />
+            )}
+          </g>
+          {/* Body */}
+          <ellipse cx="100" cy="140" rx="42" ry="32" fill={fill} stroke={STROKE} strokeWidth="2.8" />
+          <ellipse cx="100" cy="152" rx="24" ry="13" fill={isDark ? DARK_BELLY : '#fff'} opacity={isDark ? 0.65 : 0.32} />
+          {/* Spike ridge on back (dark only) */}
+          {isDark && (
+            <path d={`M 76 112 L 80 105 L 84 112 L 88 103 L 92 112 L 96 103 L 100 112 L 104 103 L 108 112 L 112 103 L 116 112 L 120 105 L 124 112`}
+              stroke={DARK_DARKER} strokeWidth="1.4" fill="none" />
+          )}
+          {/* Chest scar (dark only) */}
+          {isDark && (
+            <path d={`M 92 134 L 100 148 M 96 138 L 93 142`} stroke="#5a1020" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+          )}
+          {/* Webbed feet */}
+          <ellipse cx="76" cy="172" rx="13" ry="9" fill={fill} stroke={STROKE} strokeWidth="2.5" />
+          <path d={`M 64 178 Q 69 184 74 180 Q 79 184 84 180 Q 88 182 88 174`} fill={webFill} stroke={STROKE} strokeWidth="1" opacity="0.9" />
+          <ellipse cx="124" cy="172" rx="13" ry="9" fill={fill} stroke={STROKE} strokeWidth="2.5" />
+          <path d={`M 112 178 Q 117 184 122 180 Q 127 184 132 180 Q 136 182 136 174`} fill={webFill} stroke={STROKE} strokeWidth="1" opacity="0.9" />
+          {/* Venom spurs (dark only) — real platypus feature, made menacing */}
+          {isDark && (
+            <>
+              <path d={`M 67 170 L 58 165`} stroke="#D6307D" strokeWidth="2" strokeLinecap="round" />
+              <path d={`M 133 170 L 142 165`} stroke="#D6307D" strokeWidth="2" strokeLinecap="round" />
+            </>
+          )}
+          {/* Head */}
+          <ellipse cx="100" cy="78" rx="42" ry="38" fill={fill} stroke={STROKE} strokeWidth="2.8" />
+          {/* Tiny fur tufts on top of head */}
+          {!isDark && (
+            <>
+              <path d={`M 88 42 Q 91 37 94 42`} stroke={STROKE} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+              <path d={`M 98 39 Q 101 34 104 39`} stroke={STROKE} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+              <path d={`M 108 42 Q 111 37 114 42`} stroke={STROKE} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+            </>
+          )}
+          {isDark && (
+            <>
+              <path d={`M 88 44 L 90 32 L 92 44`} stroke={DARK_DARKER} strokeWidth="1.6" fill="none" />
+              <path d={`M 98 42 L 100 28 L 102 42`} stroke={DARK_DARKER} strokeWidth="1.8" fill="none" />
+              <path d={`M 108 44 L 110 32 L 112 44`} stroke={DARK_DARKER} strokeWidth="1.6" fill="none" />
+            </>
+          )}
+          {/* Eyes */}
+          <StandingEyes cx={84} cy={75} mood={mood} variant={variant} />
+          <StandingEyes cx={116} cy={75} mood={mood} variant={variant} />
+          {/* Bill — face-forward, projects from lower face */}
+          {!chewing && (
+            <>
+              <ellipse cx="100" cy="106" rx="26" ry="13" fill={billFill} stroke={STROKE} strokeWidth="2.2" />
+              <ellipse cx="100" cy="102" rx="20" ry="4" fill={billHighlight} opacity="0.55" />
+              <line x1="74" y1="106" x2="126" y2="106" stroke={STROKE} strokeWidth="0.7" opacity="0.5" />
+              {/* Serrated edge for dark variant */}
+              {isDark && (
+                <path d={`M 76 94 L 80 98 L 84 94 L 88 98 L 92 94 L 96 98 L 100 94 L 104 98 L 108 94 L 112 98 L 116 94 L 120 98 L 124 94`}
+                  stroke={STROKE} strokeWidth="0.7" fill="none" />
+              )}
+              {/* Nostrils */}
+              <ellipse cx="93" cy="100" rx="1.3" ry="2" fill={STROKE} />
+              <ellipse cx="107" cy="100" rx="1.3" ry="2" fill={STROKE} />
+            </>
+          )}
+          {chewing && (
+            <g style={{ animation: 'chewJaw 0.25s ease-in-out infinite', transformOrigin: '100px 106px' }}>
+              <ellipse cx="100" cy="106" rx="26" ry="13" fill={billFill} stroke={STROKE} strokeWidth="2.2" />
+              <ellipse cx="100" cy="113" rx="22" ry="6" fill={isDark ? DARK_DARKER : '#8B4500'} opacity="0.85" />
+              <ellipse cx="93" cy="100" rx="1.3" ry="2" fill={STROKE} />
+              <ellipse cx="107" cy="100" rx="1.3" ry="2" fill={STROKE} />
+            </g>
+          )}
+          {/* Cheeks (cute only) */}
+          {!isDark && (
+            <>
+              <CheekBlush cx={66} cy={92} variant={variant} color={color} />
+              <CheekBlush cx={134} cy={92} variant={variant} color={color} />
+            </>
+          )}
+          {isDark && !chewing && <SpikedCollar cx={100} cy={120} w={28} />}
+        </>
+      )}
+    </g>
+  );
+}
+
+const ANIMAL_COMPONENTS = { dog: Dog, cat: Cat, rabbit: Rabbit, dragon: Dragon, phoenix: Phoenix, unicorn: Unicorn, platypus: Platypus };
 
 
 function AnimalPet({ type = 'dog', color = T.teal, mood = 'awake', size = 200, chewing = false, variant = 'cute', wingFlap = false, equipped = {} }) {
@@ -1700,6 +1910,7 @@ const MOUTH_POINTS = {
   dragon:  { x: 100, y: 106 },
   phoenix: { x: 100, y: 110 },
   unicorn: { x: 100, y: 106 },
+  platypus: { x: 100, y: 106 },
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -2064,6 +2275,37 @@ function AppleSVG({ size = 56 }) {
     </svg>
   );
 }
+function YabbySVG({ size = 56 }) {
+  // Australian freshwater crayfish — what platypuses actually eat
+  return (
+    <svg viewBox="0 0 130 80" width={size} height={size * 0.62}>
+      <ellipse cx="65" cy="72" rx="40" ry="4" fill="rgba(0,0,0,0.25)" />
+      {/* Big front claw left */}
+      <path d="M 18 38 Q 8 32 6 22 Q 6 14 14 14 Q 22 16 24 26 Q 22 32 28 36 Z" fill="#3a6048" stroke="#1a3020" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M 12 18 L 18 22 L 12 26 Z" fill="#1a3020" />
+      {/* Big front claw right */}
+      <path d="M 18 50 Q 8 56 6 66 Q 6 74 14 74 Q 22 72 24 62 Q 22 56 28 52 Z" fill="#3a6048" stroke="#1a3020" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M 12 70 L 18 66 L 12 62 Z" fill="#1a3020" />
+      {/* Body — segmented */}
+      <ellipse cx="60" cy="44" rx="32" ry="20" fill="#4a7858" />
+      <path d="M 42 30 Q 60 26 78 30 L 78 58 Q 60 62 42 58 Z" fill="#5a8868" />
+      {/* Segment lines */}
+      <path d="M 50 30 Q 50 44 50 58" stroke="#1a3020" strokeWidth="1" fill="none" opacity="0.7" />
+      <path d="M 60 28 Q 60 44 60 60" stroke="#1a3020" strokeWidth="1" fill="none" opacity="0.7" />
+      <path d="M 70 30 Q 70 44 70 58" stroke="#1a3020" strokeWidth="1" fill="none" opacity="0.7" />
+      {/* Eyes (small, on stalks) */}
+      <circle cx="86" cy="36" r="3" fill="#1a3020" />
+      <circle cx="86" cy="52" r="3" fill="#1a3020" />
+      <circle cx="86" cy="35" r="1" fill="#fff" opacity="0.8" />
+      <circle cx="86" cy="51" r="1" fill="#fff" opacity="0.8" />
+      {/* Tail fan */}
+      <path d="M 92 32 L 118 22 L 122 36 L 118 44 L 122 52 L 118 66 L 92 56 Z" fill="#3a6048" stroke="#1a3020" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M 100 32 Q 110 36 110 44 Q 110 52 100 56" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" fill="none" />
+      {/* Highlight */}
+      <ellipse cx="55" cy="38" rx="9" ry="5" fill="rgba(255,255,255,0.3)" />
+    </svg>
+  );
+}
 
 const TREAT_BY_ANIMAL = {
   dog:     { Treat: BoneSVG,    label: 'bone',       dragHint: 'Drag a bone to their mouth' },
@@ -2072,6 +2314,7 @@ const TREAT_BY_ANIMAL = {
   dragon:  { Treat: GemSVG,     label: 'gem',         dragHint: 'Drag a gem to their mouth' },
   phoenix: { Treat: BerrySVG,   label: 'berries',    dragHint: 'Drag some berries to their mouth' },
   unicorn: { Treat: AppleSVG,   label: 'apple',      dragHint: 'Drag an apple to their mouth' },
+  platypus: { Treat: YabbySVG,  label: 'yabby',      dragHint: 'Drag a yabby to their bill' },
 };
 
 const ACTIVITY_BY_ANIMAL = {
@@ -2093,6 +2336,9 @@ const ACTIVITY_BY_ANIMAL = {
   unicorn: { label: 'Gallop',  emoji: '🦄', bg: 'rainbow',   bgDark: 'shadow_realm',
              speed: 2.5,  yAmp: 12, yFreq: 600,  hopStyle: false, pauseStyle: false, rainbowTrail: true,
              trail: T.pink,    tapSyms: ['⭐','🌈','💫'],  petGoal: 'pg_bedtime' },
+  platypus: { label: 'Swim',   emoji: '🌊', bg: 'meadow',    bgDark: 'shadow_cave',
+             speed: 1.6,  yAmp: 10, yFreq: 1500, hopStyle: false, pauseStyle: false, rainbowTrail: false,
+             trail: '#1FA89C', tapSyms: ['💧','🌿','✨'],  petGoal: 'pg_bedtime' },
 };
 
 
@@ -5606,6 +5852,7 @@ function Onboarding({ user, onDone }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, width: '100%', marginBottom: 20 }}>
           {ANIMALS.map(a => {
             const isMystery = a.id === 'mystery';
+            const isIbss = a.id === 'platypus';
             const active = pickerSelected === a.id;
             return (
               <button key={a.id} onClick={() => selectAnimal(a.id)} style={{
@@ -5623,21 +5870,35 @@ function Onboarding({ user, onDone }) {
                   background: active ? `${T.purple}22` : `linear-gradient(135deg, ${T.purple}11, ${T.pink}08)`,
                   border: active ? `2px solid ${T.purple}` : `1px dashed ${T.purple}66`,
                 } : {}),
+                ...(isIbss ? {
+                  background: active
+                    ? 'linear-gradient(135deg, #7FD42022, #1FA89C22, #7B2D8E22, #D6307D22)'
+                    : 'linear-gradient(135deg, #7FD42011, #1FA89C0a, #7B2D8E0a, #D6307D11)',
+                  border: active ? '2px solid #7B2D8E' : '1px solid #7B2D8E55',
+                } : {}),
               }}>
                 <span style={{ fontSize: 32 }}>{a.emoji}</span>
                 <span style={{
                   fontSize: 12, fontWeight: 600,
-                  color: active ? (isMystery ? T.purple : T.teal) : T.textDim,
+                  color: active
+                    ? (isMystery ? T.purple : isIbss ? '#D6307D' : T.teal)
+                    : T.textDim,
+                  ...(isIbss ? {
+                    background: 'linear-gradient(90deg, #7FD420, #1FA89C, #7B2D8E, #D6307D)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  } : {}),
                 }}>{a.name}</span>
                 <span style={{ fontSize: 9, color: T.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {isMystery ? 'surprise!' : a.kind}
+                  {isMystery ? 'surprise!' : isIbss ? 'special' : a.kind}
                 </span>
               </button>
             );
           })}
         </div>
         <button
-          onClick={() => petType && (petMystery ? setStep('variant') : setStep('color'))}
+          onClick={() => petType && (petMystery || petType === 'platypus' ? setStep('variant') : setStep('color'))}
           style={{ ...primaryBtn, opacity: petType ? 1 : 0.4 }}
           disabled={!petType}
         >
@@ -13666,13 +13927,30 @@ function HatchWorldOverlay({ user, onClose }) {
   // ===== rooftop bot logic =====
   useEffect(() => {
     if (stage !== "rooftop") return;
+    // STEP 1: Immediately scale bot positions to actual scene size so they're
+    // visible on first render. Without this, bots use raw coords (e.g. x:600)
+    // which are off-screen on a phone.
+    const w = typeof window !== "undefined" ? window.innerWidth : 400;
+    const h = typeof window !== "undefined" ? window.innerHeight : 800;
+    setRegulars(PARK_REGULARS.map(r => {
+      const baseX = (r.home.x / 1000) * w;
+      const baseY = (r.home.y / 800) * h;
+      return {
+        ...r,
+        x: Math.max(80, Math.min(w - 80, baseX)),
+        y: Math.max(h * 0.62, Math.min(h - 60, baseY)),
+        emote: null, emoteUntil: 0,
+      };
+    }));
+
+    // STEP 2: Schedule the recurring wander animation
     const timeouts = [];
     PARK_REGULARS.forEach((r, idx) => {
       const animate = () => {
-        const w = window.innerWidth, h = window.innerHeight;
-        const baseX = (r.home.x / 1000) * w, baseY = (r.home.y / 800) * h;
-        const x = Math.max(80, Math.min(w - 80, baseX + (Math.random() - 0.5) * r.wander));
-        const y = Math.max(h * 0.62, Math.min(h - 60, baseY + (Math.random() - 0.5) * 50));
+        const w2 = window.innerWidth, h2 = window.innerHeight;
+        const baseX = (r.home.x / 1000) * w2, baseY = (r.home.y / 800) * h2;
+        const x = Math.max(80, Math.min(w2 - 80, baseX + (Math.random() - 0.5) * r.wander));
+        const y = Math.max(h2 * 0.62, Math.min(h2 - 60, baseY + (Math.random() - 0.5) * 50));
         const shouldEmote = Math.random() < r.emoteChance;
         const emote = shouldEmote ? r.favEmotes[Math.floor(Math.random() * r.favEmotes.length)] : null;
         setRegulars(prev => prev.map(p => p.id === r.id ? { ...p, x, y, emote, emoteUntil: emote ? Date.now() + 3000 : 0 } : p));
@@ -14050,14 +14328,54 @@ function HatchWorldOverlay({ user, onClose }) {
               </p>
 
               {tappedLocation.status === "open" && (
-                <div className="flex gap-3 mb-4 text-[12px]">
-                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
-                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{otherPets.length + 1 + regulars.length}</span> pets here
+                <>
+                  {/* Pet picker — shows the teen which pet is going. Currently
+                      shows the one pet they have; structured for future
+                      multi-pet support. */}
+                  <div style={{
+                    background: "rgba(255, 248, 232, 0.04)",
+                    border: "1px solid rgba(255, 248, 232, 0.1)",
+                    borderRadius: 16, padding: 12, marginBottom: 14,
+                  }}>
+                    <div style={{
+                      fontSize: "10px", color: "rgba(255, 248, 232, 0.5)",
+                      letterSpacing: "0.1em", textTransform: "uppercase",
+                      fontWeight: 600, marginBottom: 8,
+                    }}>Take this pet</div>
+                    <div className="flex items-center gap-3">
+                      <div style={{
+                        background: `radial-gradient(circle, ${myPet.color}30 0%, transparent 70%)`,
+                        borderRadius: "50%", padding: 4,
+                        border: `2px solid ${myPet.color}`,
+                      }}>
+                        <ParkPetSVG pet={myPet} size={56} />
+                      </div>
+                      <div className="flex-1">
+                        <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "20px", color: "#FFF8E8" }}>
+                          {myPet.name}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.5)", marginTop: 2 }}>
+                          ready to wander
+                        </div>
+                      </div>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: "50%",
+                        background: "#5FD48A",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, color: "#1A0F2E", fontWeight: 700,
+                      }}>✓</div>
+                    </div>
                   </div>
-                  <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
-                    <span style={{ color: "#E0A95C", fontWeight: 700 }}>{drops.length}</span> gifts waiting
+
+                  <div className="flex gap-3 mb-4 text-[12px]">
+                    <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                      <span style={{ color: "#E0A95C", fontWeight: 700 }}>{otherPets.length + 1 + regulars.length}</span> pets here
+                    </div>
+                    <div style={{ color: "rgba(255, 248, 232, 0.7)" }}>
+                      <span style={{ color: "#E0A95C", fontWeight: 700 }}>{drops.length}</span> gifts waiting
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               <div style={{ fontSize: "11px", color: "rgba(255, 248, 232, 0.45)", marginBottom: "20px", letterSpacing: "0.04em" }}>
