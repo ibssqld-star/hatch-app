@@ -13349,10 +13349,10 @@ function ShoppingGameActivity({ onFinish }) {
 
 
 // ════════════════════════════════════════════════════════════════════════════
-// SOCIAL — multi-place social world ("The Park") + future social scenarios
-// Origin: HatchPark.jsx, integrated as a Hatch tab. Each "social situation"
-// lives as a module here (parallel to LEARN_MODULES). Add more by creating
-// a new module entry + a corresponding overlay component.
+// SOCIAL — Hatch Park (the rooftop social world).
+// Renders as HatchWorldOverlay({ user, onClose }) — opens straight on the map
+// using the teen's current pet (user.petType / petName / petColor / petVariant).
+// Reuses HatchTeen's existing AnimalPet + animal SVGs.
 // ════════════════════════════════════════════════════════════════════════════
 
 // ─── Park constants ─────────────────────────────────────────────────────────
@@ -13404,13 +13404,13 @@ const PARK_MAP_LOCATIONS = [
 ];
 
 const PARK_REGULARS = [
-  { id: "regular_mochi", name: "Mochi", color: "#9B8AC4", hat: "headphones", accessory: "scarf",
+  { id: "regular_mochi", name: "Mochi", type: "cat",     color: "#9B8AC4",
     isBot: true, bio: "always near the boombox",
     home: { x: 600, y: 470 }, wander: 80, moveInterval: [7000, 14000], emoteChance: 0.35, favEmotes: ["music", "heart"] },
-  { id: "regular_pip", name: "Pip", color: "#E8736B", hat: "cap", accessory: "shades",
+  { id: "regular_pip",   name: "Pip",   type: "dog",     color: "#E8736B",
     isBot: true, bio: "hyped about everything",
     home: { x: 500, y: 480 }, wander: 200, moveInterval: [3500, 7000], emoteChance: 0.55, favEmotes: ["fire", "snack", "music"] },
-  { id: "regular_sage", name: "Sage", color: "#7FA88E", hat: "bucket", accessory: "chain",
+  { id: "regular_sage",  name: "Sage",  type: "rabbit",  color: "#7FA88E",
     isBot: true, bio: "the quiet one on the bench",
     home: { x: 360, y: 470 }, wander: 50, moveInterval: [12000, 22000], emoteChance: 0.25, favEmotes: ["wave", "heart"] },
 ];
@@ -13789,12 +13789,12 @@ function ParkPet({ pet, isMe, isBot, onTap }) {
       transition: "left 1100ms ease-out, top 1100ms ease-out",
       pointerEvents: isBot ? "auto" : "none", cursor: isBot ? "pointer" : "default", zIndex: 10,
     }} onClick={isBot && onTap ? (e) => { e.stopPropagation(); onTap(); } : undefined}>
-      {emote && (<div className="absolute left-1/2 -translate-x-1/2 -top-12 px-3 py-1 rounded-full text-xl"
-        style={{ background: "rgba(255, 248, 232, 0.95)", backdropFilter: "blur(8px)", color: "#2D1B33", animation: "bobble 0.6s ease-out" }}>
+      {emote && (<div className="absolute left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xl"
+        style={{ top: -60, background: "rgba(255, 248, 232, 0.95)", backdropFilter: "blur(8px)", color: "#2D1B33", animation: "bobble 0.6s ease-out" }}>
         {emote.emoji}
       </div>)}
-      <div style={{ animation: "idle 2.6s ease-in-out infinite" }}><ParkPetSVG pet={pet} size={76} /></div>
-      <div className="text-center mt-0.5">
+      <AnimalPet type={pet.type || "dog"} color={pet.color} size={90} mood="awake" />
+      <div className="text-center" style={{ marginTop: -10 }}>
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px]" style={{
           fontFamily: "'Outfit', sans-serif", fontWeight: 600,
           background: isMe ? "rgba(224, 169, 92, 0.95)" : isBot ? "rgba(155, 138, 196, 0.85)" : "rgba(45, 27, 51, 0.65)",
@@ -13817,14 +13817,16 @@ function ParkPet({ pet, isMe, isBot, onTap }) {
 function HatchWorldOverlay({ user, onClose }) {
   const cohortCode = "hatch"; // single global cohort for v1
   const [stage, setStage] = useState("map");
-  const [myPet, setMyPet] = useState(() => {
-    const p = deriveParkPetFromUser(user);
-    if (typeof window !== 'undefined') {
-      p.x = window.innerWidth * 0.5;
-      p.y = window.innerHeight * 0.75;
-    }
-    return p;
-  });
+  const [myPet, setMyPet] = useState(() => ({
+    id: parkGeneratePetId(),
+    name: ((user && user.petName) || "Pet").slice(0, 12),
+    type: (user && user.petType) || "dog",
+    color: (user && user.petColor) || "#E8736B",
+    variant: (user && user.petVariant) || "cute",
+    x: typeof window !== "undefined" ? window.innerWidth * 0.5 : 200,
+    y: typeof window !== "undefined" ? window.innerHeight * 0.75 : 600,
+    emote: null, emoteUntil: 0, lastSeen: Date.now(),
+  }));
   const [otherPets, setOtherPets] = useState([]);
   const [storageWorks, setStorageWorks] = useState(true);
   const [regulars, setRegulars] = useState(() =>
@@ -13845,14 +13847,11 @@ function HatchWorldOverlay({ user, onClose }) {
   const myPetRef = useRef(null);
   const sceneRef = useRef(null);
   const mapScrollRef = useRef(null);
-  const petId = myPet.id;
+  const petId = myPet?.id;
 
   useEffect(() => { myPetRef.current = myPet; }, [myPet]);
 
-  // Re-derive pet if user identity changes (e.g. they edited petName/petColor in HatchTeen)
-  useEffect(() => {
-    setMyPet(prev => ({ ...prev, name: (user.petName || "Pet").slice(0, 12), color: user.petColor || prev.color }));
-  }, [user.petName, user.petColor]);
+  // (User-prop watcher removed in standalone)
 
   // Map scroll: centre on rooftop (the only open location)
   useEffect(() => {
@@ -14118,6 +14117,24 @@ function HatchWorldOverlay({ user, onClose }) {
     @keyframes smoke { 0% { transform: translateY(0) translateX(0) scale(1); opacity: 0.4; } 100% { transform: translateY(-15px) translateX(5px) scale(1.5); opacity: 0; } }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    @keyframes petBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    @keyframes petSleep { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(2px) scale(1.01); } }
+    @keyframes petGlow { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.08); } }
+    @keyframes sleepZ { 0%,100% { opacity: 0.4; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-6px); } }
+    @keyframes tailWagDog { 0%,100%{transform:rotate(-15deg);} 50%{transform:rotate(15deg);} }
+    @keyframes tailLazyWag { 0%,100%{transform:rotate(-5deg);} 50%{transform:rotate(8deg);} }
+    @keyframes tailSwishCat { 0%,100%{transform:rotate(-4deg);} 20%{transform:rotate(-6deg);} 50%{transform:rotate(8deg);} 80%{transform:rotate(2deg);} }
+    @keyframes loafBreathe { 0%,100%{transform:scale(1,1);} 50%{transform:scale(1.012,0.99);} }
+    @keyframes eyeFlicker { 0%,100%{opacity:1;} 92%{opacity:1;} 94%{opacity:0.4;} 96%{opacity:1;} 98%{opacity:0.6;} }
+    @keyframes wingFlapLeft { 0%{transform:rotate(0deg) scaleY(1);} 100%{transform:rotate(18deg) scaleY(0.82);} }
+    @keyframes wingFlapRight { 0%{transform:rotate(0deg) scaleY(1);} 100%{transform:rotate(-18deg) scaleY(0.82);} }
+    @keyframes wingFlapV2 { 0%,100%{transform:scaleY(1);} 50%{transform:scaleY(0.85);} }
+    @keyframes flameLick { 0%,100%{transform:translateY(0) scaleY(1);} 50%{transform:translateY(-2px) scaleY(1.1);} }
+    @keyframes hornGlow { 0%,100%{filter:drop-shadow(0 0 4px #FFD700);} 50%{filter:drop-shadow(0 0 10px #FFD700);} }
+    @keyframes hornGlowDark { 0%,100%{filter:drop-shadow(0 0 4px #FF1010);} 50%{filter:drop-shadow(0 0 12px #FF1010);} }
+    @keyframes noseTwitch { 0%,90%,100%{transform:translateY(0);} 95%{transform:translateY(-1px);} }
+    @keyframes chewJaw { 0%,100%{transform:scaleY(1);} 35%{transform:scaleY(0.88) translateY(3px);} 70%{transform:scaleY(1.04);} }
   `;
 
   // ===== MAP =====
@@ -14278,7 +14295,7 @@ function HatchWorldOverlay({ user, onClose }) {
               return (
                 <g transform={`translate(${rooftop.mapX - 100}, ${rooftop.mapY + 30})`} style={{ animation: "mapPet 2.6s ease-in-out infinite" }}>
                   <foreignObject x="-30" y="-65" width="60" height="70">
-                    <ParkPetSVG pet={myPet} size={56} />
+                    <AnimalPet type={myPet.type || "dog"} color={myPet.color} size={56} mood="awake" />
                   </foreignObject>
                   <rect x="-30" y="8" width="60" height="16" rx="8" fill="#F4B740" stroke="#1A0F2E" strokeWidth="1" />
                   <text x="0" y="19" textAnchor="middle" fontFamily="'Outfit', sans-serif" fontSize="10" fontWeight="700" fill="#1A0F2E">
@@ -14348,7 +14365,7 @@ function HatchWorldOverlay({ user, onClose }) {
                         borderRadius: "50%", padding: 4,
                         border: `2px solid ${myPet.color}`,
                       }}>
-                        <ParkPetSVG pet={myPet} size={56} />
+                        <AnimalPet type={myPet.type || "dog"} color={myPet.color} size={56} mood="awake" />
                       </div>
                       <div className="flex-1">
                         <div style={{ fontFamily: "'Caprasimo', cursive", fontSize: "20px", color: "#FFF8E8" }}>
