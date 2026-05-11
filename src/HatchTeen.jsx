@@ -14145,8 +14145,9 @@ function HatchWorldOverlay({ user, onClose }) {
   if (stage === "entry") {
     const previewPet = { color, hat, accessory };
     return (
-      <div className="w-full min-h-screen flex items-center justify-center p-6"
-        style={{ background: "linear-gradient(160deg, #2D1B4E 0%, #5C2A6B 35%, #C44A6E 70%, #E89868 100%)", fontFamily: "'Outfit', sans-serif" }}>
+      <div className="flex items-center justify-center p-6"
+        style={{ position: "fixed", inset: 0, zIndex: 50, overflow: "auto",
+                 background: "linear-gradient(160deg, #2D1B4E 0%, #5C2A6B 35%, #C44A6E 70%, #E89868 100%)", fontFamily: "'Outfit', sans-serif" }}>
         <style>{fontStyles}</style>
         <div className="rounded-3xl p-7 max-w-md w-full" style={{
           background: "rgba(255, 248, 232, 0.06)", backdropFilter: "blur(20px)",
@@ -14213,7 +14214,7 @@ function HatchWorldOverlay({ user, onClose }) {
   // ===== MAP =====
   if (stage === "map") {
     return (
-      <div className="w-full h-screen flex flex-col overflow-hidden" style={{ fontFamily: "'Outfit', sans-serif", background: "#0F0820" }}>
+      <div className="flex flex-col overflow-hidden" style={{ position: "fixed", inset: 0, zIndex: 50, fontFamily: "'Outfit', sans-serif", background: "#0F0820" }}>
         <style>{fontStyles}</style>
 
         {/* Header */}
@@ -14484,7 +14485,7 @@ function HatchWorldOverlay({ user, onClose }) {
 
   // ===== ROOFTOP =====
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="flex flex-col overflow-hidden" style={{ position: "fixed", inset: 0, zIndex: 50, fontFamily: "'Outfit', sans-serif" }}>
       <style>{fontStyles}</style>
 
       <div className="px-5 py-3 flex items-center justify-between" style={{
